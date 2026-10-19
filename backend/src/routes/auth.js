@@ -1,9 +1,8 @@
 import { Router } from 'express'
 import bcrypt from 'bcryptjs'
-import Order from '../models/Order.js'
 import User from '../models/User.js'
 import { loggedIn, makeToken } from '../auth.js'
-import { addDays, getSettings, orderAmount, planMeals, today } from '../tiffins.js'
+import { addDays, today } from '../tiffins.js'
 
 const router = Router()
 
@@ -57,17 +56,7 @@ router.patch('/me', loggedIn, async (req, res) => {
   for (const field of ['name', 'plan', 'meals', 'foodPreference', 'occupation', 'address']) {
     if (req.body[field] !== undefined) req.user[field] = req.body[field]
   }
-  await req.user.save()
-
-  // New meals apply from today, except on days the customer already set by hand.
-  if (req.body.meals !== undefined) {
-    const meals = planMeals(req.user)
-    const { prices } = await getSettings()
-    await Order.updateMany(
-      { user: req.user._id, date: { $gte: today() }, custom: false },
-      { ...meals, amount: orderAmount(meals, prices) },
-    )
-  }
+  await req.user.save() // a new plan applies from tomorrow; today's order can be changed in the cart
   res.json({ user: req.user })
 })
 

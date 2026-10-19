@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import AccountLayout from '../components/account/AccountLayout.jsx'
+import ErrorBoundary from '../components/ErrorBoundary.jsx'
 import { FormError } from '../components/account/Field.jsx'
 import GroupCard from '../components/account/GroupCard.jsx'
 import { useNotice } from '../components/Notice.jsx'
@@ -44,7 +45,7 @@ export default function Admin() {
       .catch((err) => setError(err.message))
   }, [])
 
-  useEffect(load, [load])
+  useEffect(load, [load, tab]) // refresh the counts and lists whenever a tab is opened
 
   const toggleActive = async (target) => {
     const active = target.active === false
@@ -116,40 +117,42 @@ export default function Admin() {
       </div>
 
       <div className="mt-6">
-        <FormError message={error} />
-        {tab === 'orders' && <OrdersTab date={ordersDate} setDate={setOrdersDate} />}
-        {tab === 'menu' && <MenuTab />}
-        {tab === 'activity' && <ActivityTab onOpenDay={openDay} />}
-        {tab === 'dues' && <DuesTab />}
-        {tab === 'prices' && <PricesTab />}
-        {needsUsers && !error && !(users && groups) && <p className="text-muted">Loading…</p>}
-        {tab === 'payments' && users && groups && <PaymentsTab users={users} groups={groups} />}
-        {tab === 'users' && users && groups && (
-          <UsersTab
-            users={users}
-            groups={groups}
-            currentUser={user}
-            onToggleActive={toggleActive}
-            onDelete={deleteUser}
-          />
-        )}
-        {tab === 'groups' && groups && (
-          <div className="grid gap-5 lg:grid-cols-2">
-            {groups.length === 0 && <p className="card p-6 text-muted">No groups yet.</p>}
-            {groups.map((g) => (
-              <GroupCard
-                key={g._id}
-                group={g}
-                currentUser={user}
-                onChange={(updated) =>
-                  setGroups((list) =>
-                    updated ? list.map((x) => (x._id === g._id ? updated : x)) : list.filter((x) => x._id !== g._id),
-                  )
-                }
-              />
-            ))}
-          </div>
-        )}
+        <ErrorBoundary key={tab} name="This tab">
+          <FormError message={error} />
+          {tab === 'orders' && <OrdersTab date={ordersDate} setDate={setOrdersDate} />}
+          {tab === 'menu' && <MenuTab />}
+          {tab === 'activity' && <ActivityTab onOpenDay={openDay} />}
+          {tab === 'dues' && <DuesTab />}
+          {tab === 'prices' && <PricesTab />}
+          {needsUsers && !error && !(users && groups) && <p className="text-muted">Loading…</p>}
+          {tab === 'payments' && users && groups && <PaymentsTab users={users} groups={groups} />}
+          {tab === 'users' && users && groups && (
+            <UsersTab
+              users={users}
+              groups={groups}
+              currentUser={user}
+              onToggleActive={toggleActive}
+              onDelete={deleteUser}
+            />
+          )}
+          {tab === 'groups' && groups && (
+            <div className="grid gap-5 lg:grid-cols-2">
+              {groups.length === 0 && <p className="card p-6 text-muted">No groups yet.</p>}
+              {groups.map((g) => (
+                <GroupCard
+                  key={g._id}
+                  group={g}
+                  currentUser={user}
+                  onChange={(updated) =>
+                    setGroups((list) =>
+                      updated ? list.map((x) => (x._id === g._id ? updated : x)) : list.filter((x) => x._id !== g._id),
+                    )
+                  }
+                />
+              ))}
+            </div>
+          )}
+        </ErrorBoundary>
       </div>
     </AccountLayout>
   )

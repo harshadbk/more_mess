@@ -1,4 +1,5 @@
 import { Router } from 'express'
+import Dish from '../models/Dish.js'
 import Group from '../models/Group.js'
 import Order from '../models/Order.js'
 import User from '../models/User.js'
@@ -6,13 +7,13 @@ import { adminOnly, loggedIn } from '../auth.js'
 import {
   addDays,
   allDues,
+  applyPrices,
   catchUp,
   getSettings,
   isDate,
   MEALS,
-  orderAmount,
   perDay,
-  planMeals,
+  removeGroup,
   startOf,
   today,
 } from '../tiffins.js'
@@ -32,18 +33,18 @@ router.patch('/users/:id', async (req, res) => {
   const update = active ? { active, startDate: addDays(today(), 1) } : { active }
   const user = await User.findByIdAndUpdate(req.params.id, update, { new: true })
   if (!user) return res.status(404).json({ error: 'User not found.' })
-  // Someone who left gets no more tiffins after today.
-  if (!active) await Order.deleteMany({ user: user._id, date: { $gt: today() } })
+  // Someone who left gets no more tiffins of their own after today.
+  if (!active) await Order.deleteMany({ account: user._id, date: { $gt: today() } })
   res.json({ user })
 })
 
-// Delete a user: remove them from every group and delete the groups they own
+// Delete a user. Groups they own are removed (their bill and payments move to another member).
 router.delete('/users/:id', async (req, res) => {
   if (req.user._id.equals(req.params.id)) return res.status(400).json({ error: 'You cannot delete yourself.' })
 
-  await Group.deleteMany({ owner: req.params.id })
+  for (const group of await Group.find({ owner: req.params.id })) await removeGroup(group, group.owner)
   await Group.updateMany({}, { $pull: { members: req.params.id } })
-  await Order.deleteMany({ user: req.params.id })
+  await Order.deleteMany({ account: req.params.id })
   await User.findByIdAndDelete(req.params.id)
   res.json({ deleted: true })
 })
@@ -56,55 +57,97 @@ router.get('/groups', async (_req, res) => {
 
 /* ---------------------------------------------------------------- Orders */
 
-// How many tiffins to make on a day (default today), per group and per individual.
+// What to cook on a day (default today): a kitchen list (dish × qty per meal),
+// and each group's and person's order. Future days show plans + changes so far.
 router.get('/orders', async (req, res) => {
   const date = isDate(req.query.date) ? req.query.date : today()
   if (date <= today()) await catchUp()
 
-  const [users, orders, groups] = await Promise.all([
-    User.find({ role: 'user' }).sort({ name: 1 }),
+  const [orders, users, groups, dishes, settings] = await Promise.all([
     Order.find({ date }),
-    Group.find().sort({ name: 1 }),
+    User.find({ role: 'user' }),
+    Group.find(),
+    Dish.find({ date }).sort({ createdAt: 1 }),
+    getSettings(),
   ])
+  const byId = (list, id) => list.find((x) => x._id.equals(id))
 
-  // Each person's tiffins: their saved record, or for a future day their plan.
-  const people = users
-    .map((user) => {
-      let order = orders.find((o) => o.user.equals(user._id))
-      if (!order && date > today() && user.active && startOf(user) <= date) order = { ...planMeals(user), specials: [] }
-      if (!order) return null
+  // Future days: add the plan orders that will be created (accounts without an order yet).
+  const all = orders.map((o) => o.toObject())
+  if (date > today()) {
+    const inGroup = new Set(groups.flatMap((g) => g.members.map(String)))
+    const eats = (u) => u.active && startOf(u) <= date
+    const plan = (account, kind, people) => {
+      if (all.some((o) => o.account.equals(account))) return
+      const items = MEALS.flatMap((meal) => {
+        const qty = people.filter((u) => eats(u) && u.meals.includes(meal)).length
+        const dish = dishes.find((d) => d.meal === meal)
+        const price = dish?.price > 0 ? dish.price : settings.prices[meal]
+        return qty
+          ? [
+              {
+                meal,
+                dish: dish?._id ?? null,
+                name: dish?.name ?? `${meal[0].toUpperCase()}${meal.slice(1)} tiffin`,
+                price,
+                qty,
+              },
+            ]
+          : []
+      })
+      if (items.length)
+        all.push({ account, kind, items, amount: items.reduce((s, i) => s + i.price * i.qty, 0), planned: true })
+    }
+    for (const u of users) if (!inGroup.has(String(u._id))) plan(u._id, 'user', [u])
+    for (const g of groups)
+      plan(
+        g._id,
+        'group',
+        users.filter((u) => g.members.some((m) => m.equals(u._id))),
+      )
+  }
+
+  // Kitchen list: how many of each dish, per meal.
+  const kitchen = {}
+  for (const o of all) {
+    for (const i of o.items) {
+      const key = `${i.meal}|${i.name}`
+      kitchen[key] = kitchen[key] ?? { meal: i.meal, name: i.name, qty: 0 }
+      kitchen[key].qty += i.qty
+    }
+  }
+  const order = ['breakfast', 'lunch', 'dinner', 'special']
+  const total = Object.fromEntries(
+    [...MEALS, 'special'].map((meal) => [
+      meal,
+      all.reduce((s, o) => s + o.items.filter((i) => i.meal === meal).reduce((t, i) => t + i.qty, 0), 0),
+    ]),
+  )
+
+  const rows = all
+    .map((o) => {
+      const who = o.kind === 'group' ? byId(groups, o.account) : byId(users, o.account)
       return {
-        _id: user._id,
-        name: user.name,
-        phone: user.phone,
-        ...Object.fromEntries(MEALS.map((meal) => [meal, order[meal]])),
-        specials: order.specials.map((s) => ({ name: s.name, qty: s.qty })),
-        changed: Boolean(order.custom),
+        _id: o.account,
+        kind: o.kind,
+        name: who?.name ?? 'Deleted',
+        phone: o.kind === 'user' ? who?.phone : undefined,
+        people: o.kind === 'group' ? who?.members.length : 1,
+        items: o.items.map(({ meal, name, price, qty }) => ({ meal, name, price, qty })),
+        amount: o.amount,
+        changed: Boolean(o.custom),
       }
     })
-    .filter(Boolean)
+    .filter((r) => r.items.length)
+    .sort((a, b) => a.name.localeCompare(b.name))
 
-  const count = (list) => ({
-    ...Object.fromEntries(MEALS.map((meal) => [meal, list.filter((p) => p[meal]).length])),
-    specials: list.reduce((sum, p) => sum + p.specials.reduce((s, x) => s + x.qty, 0), 0),
-  })
-
-  // Specials to cook, added up by dish name.
-  const specials = {}
-  for (const p of people) for (const s of p.specials) specials[s.name] = (specials[s.name] || 0) + s.qty
-
-  const isMember = (g, p) => g.members.some((m) => m.equals(p._id))
   res.json({
     date,
-    total: count(people),
-    specials: Object.entries(specials).map(([name, qty]) => ({ name, qty })),
-    groups: groups
-      .map((g) => {
-        const members = people.filter((p) => isMember(g, p))
-        return { _id: g._id, name: g.name, members, ...count(members) }
-      })
-      .filter((g) => g.members.length),
-    individuals: people.filter((p) => !groups.some((g) => isMember(g, p))),
+    total,
+    kitchen: Object.values(kitchen).sort((a, b) => order.indexOf(a.meal) - order.indexOf(b.meal) || b.qty - a.qty),
+    amount: rows.reduce((s, r) => s + r.amount, 0),
+    groups: rows.filter((r) => r.kind === 'group'),
+    individuals: rows.filter((r) => r.kind === 'user'),
   })
 })
 
@@ -124,25 +167,27 @@ router.get('/dues', async (_req, res) => {
 })
 
 router.get('/prices', async (_req, res) => {
-  res.json({ prices: (await getSettings()).prices })
+  const { prices, cutoffs } = await getSettings()
+  res.json({ prices, cutoffs })
 })
 
-// Set meal prices: { breakfast, lunch, dinner }. Applies from today; past days keep their old price.
+// Set standard prices and order cut-off times:
+// { prices: { breakfast, lunch, dinner }, cutoffs: { breakfast: '07:00', lunch: '11:00', dinner: '18:00' } }
 router.put('/prices', async (req, res) => {
   const settings = await getSettings()
   for (const meal of MEALS) {
-    const price = Number(req.body[meal])
+    const price = Number(req.body.prices?.[meal])
     if (!(price >= 0)) return res.status(400).json({ error: `Enter a price for ${meal}.` })
     settings.prices[meal] = price
+    const time = req.body.cutoffs?.[meal]
+    if (time !== undefined) {
+      if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) return res.status(400).json({ error: `Enter a time for ${meal}.` })
+      settings.cutoffs[meal] = time
+    }
   }
   await settings.save()
-
-  const upcoming = await Order.find({ date: { $gte: today() } })
-  for (const order of upcoming) {
-    order.amount = orderAmount(order, settings.prices)
-    await order.save()
-  }
-  res.json({ prices: settings.prices })
+  await applyPrices(settings.prices) // today and later; past days keep their old price
+  res.json({ prices: settings.prices, cutoffs: settings.cutoffs })
 })
 
 export default router

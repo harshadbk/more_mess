@@ -22,7 +22,15 @@ export default function AccountLayout({ children, wide = false }) {
           </Link>
           {user ? (
             <div className="flex items-center gap-3">
-              <span className="hidden text-sm text-muted sm:inline">
+              <Link
+                to="/"
+                className="inline-flex items-center gap-1.5 rounded-full px-3 py-2 text-sm font-semibold text-forest hover:bg-forest/10"
+              >
+                <ArrowLeft className="size-4" aria-hidden="true" />
+                <span className="hidden sm:inline">Back to home page</span>
+                <span className="sm:hidden">Home</span>
+              </Link>
+              <span className="hidden text-sm text-muted md:inline">
                 {user.name}
                 {user.role === 'admin' && (
                   <span className="ml-2 rounded-full bg-saffron-soft px-2 py-0.5 text-xs font-semibold text-charcoal">

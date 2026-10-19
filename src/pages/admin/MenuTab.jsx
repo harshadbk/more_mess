@@ -16,8 +16,8 @@ const sections = [
 
 const emptyDish = { meal: 'lunch', name: '', food: 'veg', price: '', description: '', image: '' }
 
-/** Add or edit one dish. */
-function DishForm({ date, editing, onSaved, onCancel }) {
+/** Add or edit one dish. `locked` = meals whose time is already over on `date`. */
+function DishForm({ date, locked, editing, onSaved, onCancel }) {
   const notify = useNotice()
   const [values, setValues] = useState(editing ?? emptyDish)
   const [error, setError] = useState('')
@@ -25,6 +25,12 @@ function DishForm({ date, editing, onSaved, onCancel }) {
   const fileRef = useRef(null)
 
   useEffect(() => setValues(editing ?? emptyDish), [editing])
+
+  // A closed meal can't take new dishes: move the form to the first meal still open.
+  const open = sections.filter((s) => !locked.includes(s.value))
+  useEffect(() => {
+    if (locked.includes(values.meal) && open.length) setValues((v) => ({ ...v, meal: open[0].value }))
+  }, [locked]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const set = (key) => (value) => setValues((v) => ({ ...v, [key]: value }))
 
@@ -43,6 +49,7 @@ function DishForm({ date, editing, onSaved, onCancel }) {
     e.preventDefault()
     if (!values.name.trim()) return setError('Enter the dish name.')
     if (values.meal === 'special' && !(Number(values.price) > 0)) return setError('Specials need a price.')
+    if (locked.includes(values.meal)) return setError('That meal time is over for this day. Add it for tomorrow instead.')
     setBusy(true)
     setError('')
     try {
@@ -74,7 +81,9 @@ function DishForm({ date, editing, onSaved, onCancel }) {
       <ChoiceGroup
         label="Meal"
         name="dishMeal"
-        options={sections.map(({ value, label, hint }) => ({ value, label, hint }))}
+        options={sections.map(({ value, label, hint }) =>
+          locked.includes(value) ? { value, label, hint: 'Time is over', disabled: true } : { value, label, hint },
+        )}
         value={values.meal}
         onChange={set('meal')}
       />
@@ -107,7 +116,7 @@ function DishForm({ date, editing, onSaved, onCancel }) {
         type="number"
         min="0"
         inputMode="numeric"
-        placeholder={values.meal === 'special' ? '120' : 'Included in the meal price'}
+        placeholder={values.meal === 'special' ? '120' : 'Empty = standard price (Prices tab)'}
         value={values.price}
         onChange={(e) => set('price')(e.target.value)}
       />
@@ -154,6 +163,7 @@ export default function MenuTab() {
   const notify = useNotice()
   const [date, setDate] = useState(todayIST())
   const [dishes, setDishes] = useState(null)
+  const [locked, setLocked] = useState([])
   const [editing, setEditing] = useState(null)
   const [error, setError] = useState('')
 
@@ -161,7 +171,10 @@ export default function MenuTab() {
     setDishes(null)
     setEditing(null)
     api(`/menu?date=${date}`)
-      .then(({ dishes }) => setDishes(dishes))
+      .then(({ dishes, locked }) => {
+        setDishes(dishes)
+        setLocked(locked ?? [])
+      })
       .catch((err) => setError(err.message))
   }, [date])
 
@@ -227,7 +240,20 @@ export default function MenuTab() {
                     />
                     {label} <span className="text-sm font-normal text-muted">({list.length})</span>
                   </h3>
-                  {list.length === 0 ? (
+                  {locked.includes(value) && list.length === 0 ? (
+                    <p className="mt-2 text-sm text-muted">
+                      {label} time is over for {formatDate(date)}.{' '}
+                      {date === todayIST() && (
+                        <button
+                          type="button"
+                          onClick={() => setDate(todayIST(1))}
+                          className="font-semibold text-forest underline"
+                        >
+                          Add it for tomorrow
+                        </button>
+                      )}
+                    </p>
+                  ) : list.length === 0 ? (
                     <p className="mt-2 text-sm text-muted">No dishes yet.</p>
                   ) : (
                     <ul className="mt-3 divide-y divide-line">
@@ -262,7 +288,7 @@ export default function MenuTab() {
             })}
         </div>
         <div className="lg:sticky lg:top-6 lg:self-start">
-          <DishForm date={date} editing={editing} onSaved={onSaved} onCancel={() => setEditing(null)} />
+          <DishForm date={date} locked={locked} editing={editing} onSaved={onSaved} onCancel={() => setEditing(null)} />
         </div>
       </div>
     </div>

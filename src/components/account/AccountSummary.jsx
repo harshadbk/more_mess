@@ -28,27 +28,34 @@ export default function AccountSummary({ refreshKey }) {
   if (!account) return <p className="text-muted">Loading your account…</p>
 
   const { me, group } = account
-  // In a group, the group pays together, so the group's pending is the one that matters.
-  const pending = group ? group.pending : me.pending
+  // In a group the group pays together: its bill is the main one. "me" = my own bill (eating alone).
+  const main = group ?? me
+  const pending = main.pending
+  const ownBill = group && (me.charges > 0 || me.paid > 0)
 
   return (
     <section aria-label="My account" className="space-y-3">
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-        <Card label="Days taken" value={me.daysTaken} />
-        <Card label="Tiffins" value={me.tiffins} note={me.specials ? `+ ${me.specials} specials` : null} />
-        <Card label="My charges" value={rupees(me.charges)} />
-        <Card label="Paid" value={rupees(group ? group.paid : me.paid)} note={group ? 'by the group' : null} />
+      {group && (
+        <p className="flex items-center gap-2 text-sm font-semibold text-forest">
+          <Users className="size-4" aria-hidden="true" />
+          Group “{group.name}” · {group.people} members · one shared bill
+        </p>
+      )}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5 [&>*:last-child]:col-span-2 lg:[&>*:last-child]:col-span-1">
+        <Card label="Days taken" value={main.daysTaken} />
+        <Card label="Tiffins" value={main.tiffins} note={main.specials ? `+ ${main.specials} specials` : null} />
+        <Card label={group ? 'Group bill' : 'My bill'} value={rupees(main.charges)} />
+        <Card label="Paid" value={rupees(main.paid)} note="agreed by both sides" />
         <Card
           label={pending < 0 ? 'Advance' : 'Pending'}
           value={rupees(Math.abs(pending))}
-          note={group ? 'for the whole group' : null}
           tone={pending > 0 ? 'text-[#b4442a]' : 'text-fresh'}
         />
       </div>
-      {group && (
-        <p className="flex flex-wrap items-center gap-x-2 text-sm text-muted">
-          <Users className="size-4 text-fresh" aria-hidden="true" />
-          Group “{group.name}”: {group.tiffins} tiffins, charges {rupees(group.charges)}, paid {rupees(group.paid)}.
+      {ownBill && (
+        <p className="text-sm text-muted">
+          My own bill (from before I joined the group): {me.tiffins} tiffins, {rupees(me.charges)}, paid{' '}
+          {rupees(me.paid)}, {me.pending > 0 ? `pending ${rupees(me.pending)}` : 'settled'}.
         </p>
       )}
     </section>

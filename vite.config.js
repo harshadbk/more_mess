@@ -109,6 +109,6 @@ export default defineConfig({
   plugins: [react(), tailwindcss(), seoPlugin()],
   // Forward API calls to the Express API in backend/ during development.
   server: {
-    proxy: { '/api': 'http://localhost:5000' },
+    proxy: { '/api': process.env.API_PROXY || 'http://localhost:5000' }, // API_PROXY lets you point at another backend
   },
 })

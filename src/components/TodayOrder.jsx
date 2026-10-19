@@ -47,6 +47,7 @@ export default function TodayOrder() {
   const [values, setValues] = useState(emptyOrder)
   const [errors, setErrors] = useState({})
   const [draft, setDraft] = useState(null)
+  const [sent, setSent] = useState(false) // true after they open WhatsApp to send
   const formRef = useRef(null)
   const previewRef = useRef(null)
 
@@ -92,7 +93,19 @@ export default function TodayOrder() {
 
         <div className="mx-auto mt-12 grid max-w-5xl gap-8 lg:grid-cols-[1fr_18rem]">
           <Reveal className="card p-6 sm:p-8">
-            {draft ? (
+            {sent ? (
+              <div role="status" className="py-6 text-center">
+                <MessageCircle className="mx-auto size-10 text-fresh" aria-hidden="true" />
+                <h3 className="mt-3 text-xl font-extrabold">Order sent on WhatsApp</h3>
+                <p className="mx-auto mt-2 max-w-sm text-[15px] text-muted">
+                  {businessConfig.name} will reply on WhatsApp to confirm your order and the price. If WhatsApp
+                  didn&apos;t open, tap below to try again.
+                </p>
+                <button type="button" className="btn-outline mt-6" onClick={() => setSent(false)}>
+                  Place another order
+                </button>
+              </div>
+            ) : draft ? (
               <div
                 ref={previewRef}
                 tabIndex={-1}
@@ -110,7 +123,20 @@ export default function TodayOrder() {
                   {draft.text}
                 </pre>
                 <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-                  <a href={draft.url} target="_blank" rel="noopener noreferrer" className="btn-primary flex-1">
+                  <a
+                    href={draft.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="btn-primary flex-1"
+                    onClick={() => {
+                      // Let the link open first, then clear the preview and the form.
+                      setTimeout(() => {
+                        setDraft(null)
+                        setValues(emptyOrder)
+                        setSent(true)
+                      }, 300)
+                    }}
+                  >
                     <MessageCircle className="size-[18px]" aria-hidden="true" />
                     Send order on WhatsApp
                     <span className="sr-only">(opens in a new tab)</span>

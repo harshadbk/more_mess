@@ -3,6 +3,7 @@ import Group from '../models/Group.js'
 import User from '../models/User.js'
 import { loggedIn } from '../auth.js'
 import { cleanPhone } from './auth.js'
+import { dropOwnFutureOrders, removeGroup } from '../tiffins.js'
 
 const router = Router()
 router.use(loggedIn) // every group route needs a logged-in user
@@ -33,6 +34,7 @@ router.post('/', async (req, res) => {
     return res.status(400).json({ error: 'You are already in a group. Leave it first.' })
 
   const group = await Group.create({ name, description, owner: req.user._id, members: [req.user._id] })
+  await dropOwnFutureOrders(req.user._id) // from tomorrow the group's order covers them
   res.status(201).json({ group: await findGroup(group._id) })
 })
 
@@ -46,6 +48,7 @@ router.post('/join', async (req, res) => {
 
   group.members.push(req.user._id)
   await group.save()
+  await dropOwnFutureOrders(req.user._id) // from tomorrow the group's order covers them
   res.json({ group: await findGroup(group._id) })
 })
 
@@ -63,6 +66,7 @@ router.post('/:id/members', async (req, res) => {
 
   group.members.push(user._id)
   await group.save()
+  await dropOwnFutureOrders(user._id)
   res.json({ group: await findGroup(group._id) })
 })
 
@@ -90,7 +94,7 @@ router.delete('/:id', async (req, res) => {
   if (!group) return res.status(404).json({ error: 'Group not found.' })
   if (!isOwnerOrAdmin(group, req.user)) return res.status(403).json({ error: 'Only the owner can delete the group.' })
 
-  await group.deleteOne()
+  await removeGroup(group) // its payments move to the owner, so no money is lost
   res.json({ deleted: true })
 })
 

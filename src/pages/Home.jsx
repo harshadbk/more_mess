@@ -30,12 +30,12 @@ export default function Home() {
         <TodaysMenu />
         <MenuSection />
         <MealPlans />
-        <TodayOrder />
         <Gallery />
         <About />
         <HowToJoin />
         <Testimonials />
         <FAQ />
+        <TodayOrder />
         <Contact />
       </main>
       <Footer />

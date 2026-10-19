@@ -74,6 +74,7 @@ export default function DuesTab() {
                   </span>
                   <span className="text-xs text-muted">
                     {r.type === 'group' ? `${r.people} people` : r.phone}
+                    {r.group && ` · own bill, now in ${r.group}`}
                     {r.active === false && ' · left mess'}
                   </span>
                 </td>

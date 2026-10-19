@@ -1,7 +1,7 @@
 # Sai Mess — Backend
 
 A small Express + MongoDB API for the Sai Mess website (the React app in the parent folder).
-It handles login (admin and user), optional groups, daily tiffin counts and payments.
+It handles login (admin and user), optional groups, the daily menu, tiffin records, billing and payments.
 
 ## Run it
 
@@ -21,16 +21,20 @@ The server creates that admin when it starts. To change the admin password, edit
 index.js              loads .env, then starts src/index.js
 src/index.js          the server: routes + error handling
 src/db.js             connects to MongoDB
+src/tiffins.js        daily orders (carts), cut-offs, menu sync, bills, pending, heatmap data
 src/auth.js           login token, "logged in" / "admins only" checks, admin from .env
 src/models/User.js    what a user looks like in the database
 src/models/Group.js   a group of friends who eat together (optional)
-src/models/Order.js   a change to someone's tiffins for one day (e.g. skip dinner)
+src/models/Order.js   one day's order (cart) for a person or a whole group: items + ₹ amount
+src/models/Dish.js    a dish on the menu for a day: breakfast / lunch / dinner / special
+src/models/Settings.js standard meal prices + order cut-off times
 src/models/Payment.js money paid by a person or group; needs both sides to agree
 src/routes/auth.js    register, login, who am I, change my plan
 src/routes/groups.js  create, join, add/remove members, leave, delete
-src/routes/orders.js  my tiffins for a day, and changing them
+src/routes/orders.js  my tiffins for a day, changing them, my account, my history
+src/routes/menu.js    the daily menu (public to read, admin to change)
 src/routes/payments.js record, confirm or reject payments
-src/routes/admin.js   users, groups, today's tiffin count, mark user active/left
+src/routes/admin.js   users, groups, tiffin count for a day, heatmap, dues, prices
 ```
 
 ## API
@@ -49,12 +53,21 @@ Everything is under `/api`. Logged-in requests send `Authorization: Bearer <toke
 | POST | `/groups/:id/members` | owner/admin: add by email or phone |
 | DELETE | `/groups/:id/members/:userId` | owner/admin removes; a member can remove themselves |
 | DELETE | `/groups/:id` | owner/admin |
+| GET | `/menu?date=` | anyone: dishes + meal prices for a day (default today) |
+| POST / PUT / DELETE | `/menu`, `/menu/:id` | admin: add / edit / remove a dish (photo as a small data URL) |
+| POST | `/menu/copy` | admin: `{ from, to }` copy a day's menu |
 | GET | `/orders?date=` | logged in: my tiffins for a day (default today) |
-| PUT | `/orders` | logged in: `{ date, lunch, dinner }` for today or later |
+| GET | `/orders?date=` | (returns the cart: menu options, prices, cut-offs, my or my group's order) |
+| PUT | `/orders` | logged in: `{ date, items: [{ meal, dish, qty }] }`, today or later. In a group: owner only |
+| GET | `/orders/account` | logged in: days taken, tiffins, charges, paid, pending (mine + my group's) |
+| GET | `/orders/history?days=` | logged in: my tiffins per day (heatmap) |
 | GET | `/payments` | admin: all; customer: own + their group's |
 | POST | `/payments` | admin: `{ amount, userId or groupId }`; customer: `{ amount, forGroup? }` |
 | POST | `/payments/:id/confirm` or `/reject` | the other side of the payment |
-| GET | `/admin/orders?date=` | admin: tiffins needed per group and per individual |
+| GET | `/admin/orders?date=` | admin: tiffins + specials to make, per group and per individual |
+| GET | `/admin/history?days=` | admin: tiffins per day for the whole mess (heatmap) |
+| GET | `/admin/dues` | admin: charges, paid and pending for every group and individual |
+| GET / PUT | `/admin/prices` | admin: `{ prices: { breakfast, lunch, dinner }, cutoffs: { breakfast: '07:00', … } }` |
 | GET | `/admin/users`, `/admin/groups` | admin |
 | PATCH | `/admin/users/:id` | admin: `{ active: false }` when someone leaves the mess |
 | DELETE | `/admin/users/:id` | admin |
@@ -62,8 +75,17 @@ Everything is under `/api`. Logged-in requests send `Authorization: Bearer <toke
 ## How it works
 
 - **Groups are optional.** Someone eating alone is an "individual". A person can be in only one group.
-- **Tiffins:** everyone gets their plan's tiffins (`meals`) every day. An Order is saved only when
-  someone changes a day (e.g. skips dinner). The admin's count = plan + those changes, for active users.
+- **Orders are carts.** Each day every account gets ONE order: a person eating alone, or a whole
+  group (1 tiffin per member who takes that meal; only the group's owner can change it). Items are
+  menu options with a quantity; the bill is price × qty. Meals with no posted options aren't shown.
+- **Cut-offs:** after a meal's cut-off time (admin sets it), today's order for that meal is locked.
+- **Menu changes** (add/edit/remove a dish) update today's and later orders; past days never change.
+- **Daily records:** every day (at startup and then hourly) each active customer gets an Order for
+  today from their plan (`meals`). Customers can change today or later days: skip a meal or add
+  specials. New sign-ups start the next day. Customers marked "left" get no new records.
+- **Money:** each Order saves its ₹ amount when it is created/changed, so changing prices later
+  never rewrites past bills. Pending = charges up to today − payments both sides agreed. A group's
+  pending covers all its members and their own payments.
 - **Payments:** whoever records a payment agrees to it automatically. It counts as *agreed* only
   after the other side confirms. Either side can reject while it is waiting.
 

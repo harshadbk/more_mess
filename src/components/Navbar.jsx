@@ -10,9 +10,9 @@ export const navLinks = [
   { id: 'home', label: 'Home' },
   { id: 'menu', label: 'Menu' },
   { id: 'meal-plans', label: 'Meal Plans' },
-  { id: 'order-today', label: 'Order Today' },
   { id: 'about', label: 'About' },
   { id: 'gallery', label: 'Gallery' },
+  { id: 'order-today', label: 'Order Today' },
   { id: 'contact', label: 'Contact' },
 ]
 

@@ -1,41 +1,48 @@
 import { useEffect, useState } from 'react'
-import { Coffee, Moon, Printer, Sparkles, Sun, User, Users } from 'lucide-react'
+import { ChefHat, Coffee, Moon, Printer, Sparkles, Sun, User, Users } from 'lucide-react'
 import Field, { FormError } from '../../components/account/Field.jsx'
 import { api } from '../../lib/api.js'
-import { formatDate, MEALS, mealLabel, todayIST } from '../../data/accountOptions.js'
-import { Stat, Tick } from './shared.jsx'
+import { formatDate, rupees, todayIST } from '../../data/accountOptions.js'
+import { Stat } from './shared.jsx'
 
-const mealIcons = { breakfast: Coffee, lunch: Sun, dinner: Moon }
+const meals = [
+  { meal: 'breakfast', label: 'Breakfast', icon: Coffee },
+  { meal: 'lunch', label: 'Lunch', icon: Sun },
+  { meal: 'dinner', label: 'Dinner', icon: Moon },
+  { meal: 'special', label: 'Specials', icon: Sparkles },
+]
 
-function PeopleTable({ people }) {
+/** "Veg thali ×3, Gulab jamun ×2" */
+const itemsText = (items) => items.map((i) => `${i.name} ×${i.qty}`).join(', ')
+
+function OrderRows({ rows, kind }) {
   return (
-    <table className="w-full min-w-[560px] text-left text-sm">
+    <table className="w-full min-w-[640px] text-left text-sm">
       <thead className="text-xs tracking-wider text-muted uppercase">
         <tr>
-          <th className="py-2 pr-3 font-semibold">Name</th>
-          <th className="py-2 pr-3 font-semibold">Phone</th>
-          {MEALS.map((m) => (
-            <th key={m} className="py-2 pr-3 text-center font-semibold">
-              {mealLabel(m)}
+          <th className="py-2 pr-3 font-semibold">{kind === 'group' ? 'Group' : 'Name'}</th>
+          {meals.map((m) => (
+            <th key={m.meal} className="py-2 pr-3 font-semibold">
+              {m.label}
             </th>
           ))}
-          <th className="py-2 font-semibold">Specials</th>
+          <th className="py-2 text-right font-semibold">Bill</th>
         </tr>
       </thead>
       <tbody className="divide-y divide-line">
-        {people.map((p) => (
-          <tr key={p._id}>
-            <td className="py-2 pr-3 font-medium">
-              {p.name}
-              {p.changed && <span className="ml-2 text-xs font-semibold text-saffron">changed</span>}
+        {rows.map((r) => (
+          <tr key={r._id} className="align-top">
+            <td className="py-2.5 pr-3">
+              <span className="font-semibold">{r.name}</span>
+              {r.changed && <span className="ml-2 text-xs font-semibold text-saffron">changed</span>}
+              <div className="text-xs text-muted">{kind === 'group' ? `${r.people} members` : r.phone}</div>
             </td>
-            <td className="py-2 pr-3 text-muted">{p.phone}</td>
-            {MEALS.map((m) => (
-              <td key={m} className="py-2 pr-3 text-center">
-                <Tick on={p[m]} />
+            {meals.map((m) => (
+              <td key={m.meal} className="py-2.5 pr-3">
+                {itemsText(r.items.filter((i) => i.meal === m.meal)) || <span className="text-muted">–</span>}
               </td>
             ))}
-            <td className="py-2 text-muted">{p.specials.map((s) => `${s.name} ×${s.qty}`).join(', ') || '–'}</td>
+            <td className="py-2.5 text-right font-semibold tabular-nums">{rupees(r.amount)}</td>
           </tr>
         ))}
       </tbody>
@@ -43,31 +50,7 @@ function PeopleTable({ people }) {
   )
 }
 
-function Counts({ row }) {
-  return (
-    <span className="flex gap-4 text-sm">
-      {MEALS.map((m) => {
-        const Icon = mealIcons[m]
-        return (
-          <span key={m} className="inline-flex items-center gap-1" title={mealLabel(m)}>
-            <Icon className="size-4 text-fresh" aria-hidden="true" />
-            <span className="sr-only">{mealLabel(m)}</span>
-            <strong>{row[m]}</strong>
-          </span>
-        )
-      })}
-      {row.specials > 0 && (
-        <span className="inline-flex items-center gap-1" title="Specials">
-          <Sparkles className="size-4 text-saffron" aria-hidden="true" />
-          <span className="sr-only">Specials</span>
-          <strong>{row.specials}</strong>
-        </span>
-      )}
-    </span>
-  )
-}
-
-/** How many tiffins to make on a day, split by group and individual. */
+/** What to cook on a day: kitchen totals per dish, then every group's and person's order. */
 export default function OrdersTab({ date, setDate }) {
   const [data, setData] = useState(null)
   const [error, setError] = useState('')
@@ -103,58 +86,66 @@ export default function OrdersTab({ date, setDate }) {
       {data && (
         <>
           <p className="text-muted">
-            Tiffins to make on <strong className="text-charcoal">{formatDate(data.date)}</strong>
-            {data.date > todayIST() ? ' (from plans and changes so far, may still change)' : ''}.
+            Orders for <strong className="text-charcoal">{formatDate(data.date)}</strong>
+            {data.date > todayIST() ? ' (plans and changes so far; may still change until the cut-off times)' : ''}.
           </p>
           <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
-            {MEALS.map((m) => (
-              <Stat key={m} label={mealLabel(m)} value={data.total[m]} />
+            {meals.map((m) => (
+              <Stat
+                key={m.meal}
+                label={m.label}
+                value={data.total[m.meal]}
+                tone={m.meal === 'special' ? 'text-saffron' : 'text-forest'}
+              />
             ))}
-            <Stat label="Specials" value={data.total.specials} tone="text-saffron" />
-            <Stat
-              label="Total tiffins"
-              value={MEALS.reduce((sum, m) => sum + data.total[m], 0) + data.total.specials}
-              tone="text-charcoal"
-            />
+            <Stat label="Bill for the day" value={rupees(data.amount)} tone="text-charcoal" />
           </div>
 
-          {data.specials.length > 0 && (
-            <section className="card p-6">
-              <h3 className="flex items-center gap-2 text-lg font-extrabold">
-                <Sparkles className="size-5 text-saffron" aria-hidden="true" />
-                Specials to cook
-              </h3>
-              <ul className="mt-3 flex flex-wrap gap-2">
-                {data.specials.map((s) => (
-                  <li key={s.name} className="rounded-full bg-saffron-soft px-4 py-1.5 text-sm font-semibold">
-                    {s.name} × {s.qty}
-                  </li>
-                ))}
-              </ul>
-            </section>
-          )}
+          <section className="card p-6">
+            <h3 className="flex items-center gap-2 text-lg font-extrabold">
+              <ChefHat className="size-5 text-fresh" aria-hidden="true" />
+              Kitchen list
+            </h3>
+            {data.kitchen.length === 0 ? (
+              <p className="mt-2 text-muted">No orders for this day.</p>
+            ) : (
+              <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                {meals.map(({ meal, label, icon: Icon }) => {
+                  const list = data.kitchen.filter((k) => k.meal === meal)
+                  if (!list.length) return null
+                  return (
+                    <div key={meal} className="rounded-xl bg-cream-dark/50 p-4">
+                      <p className="flex items-center gap-2 font-bold">
+                        <Icon className="size-4 text-fresh" aria-hidden="true" />
+                        {label}
+                      </p>
+                      <ul className="mt-2 space-y-1 text-sm">
+                        {list.map((k) => (
+                          <li key={k.name} className="flex justify-between gap-3">
+                            <span>{k.name}</span>
+                            <strong className="tabular-nums">× {k.qty}</strong>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </section>
 
           <section className="card p-6">
             <h3 className="flex items-center gap-2 text-lg font-extrabold">
               <Users className="size-5 text-fresh" aria-hidden="true" />
               Groups ({data.groups.length})
             </h3>
-            {data.groups.length === 0 && <p className="mt-2 text-muted">No groups.</p>}
-            <div className="mt-3 divide-y divide-line">
-              {data.groups.map((g) => (
-                <details key={g._id} className="py-3">
-                  <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3">
-                    <span className="font-semibold">
-                      {g.name} <span className="text-sm font-normal text-muted">· {g.members.length} people</span>
-                    </span>
-                    <Counts row={g} />
-                  </summary>
-                  <div className="mt-3 overflow-x-auto rounded-xl bg-cream-dark/40 px-4">
-                    <PeopleTable people={g.members} />
-                  </div>
-                </details>
-              ))}
-            </div>
+            {data.groups.length === 0 ? (
+              <p className="mt-2 text-muted">No group orders.</p>
+            ) : (
+              <div className="mt-3 overflow-x-auto">
+                <OrderRows rows={data.groups} kind="group" />
+              </div>
+            )}
           </section>
 
           <section className="card p-6">
@@ -163,10 +154,10 @@ export default function OrdersTab({ date, setDate }) {
               Individuals ({data.individuals.length})
             </h3>
             {data.individuals.length === 0 ? (
-              <p className="mt-2 text-muted">No individual customers.</p>
+              <p className="mt-2 text-muted">No individual orders.</p>
             ) : (
               <div className="mt-3 overflow-x-auto">
-                <PeopleTable people={data.individuals} />
+                <OrderRows rows={data.individuals} kind="user" />
               </div>
             )}
           </section>

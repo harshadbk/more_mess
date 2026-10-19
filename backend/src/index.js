@@ -8,7 +8,7 @@ import adminRoutes from './routes/admin.js'
 import orderRoutes from './routes/orders.js'
 import paymentRoutes from './routes/payments.js'
 import menuRoutes from './routes/menu.js'
-import { catchUp, fixOldData } from './tiffins.js'
+import { catchUp, dropExpiredDishes, fixOldData, syncUpcomingMenus } from './tiffins.js'
 
 const app = express()
 // Website address(es) allowed to call the API, comma-separated in .env
@@ -42,5 +42,8 @@ await connectDB()
 await ensureAdmin() // creates/updates the admin from .env, no separate step needed
 await fixOldData()
 await catchUp() // create today's tiffin records
+await syncUpcomingMenus() // match today's and later orders to the posted menu
+await dropExpiredDishes() // a meal's dishes go once its cut-off time has passed
 setInterval(() => catchUp().catch(console.error), 60 * 60 * 1000) // and keep doing it every hour
+setInterval(() => dropExpiredDishes().catch(console.error), 60 * 1000) // checked every minute
 app.listen(port, () => console.log(`API running on http://localhost:${port}`))

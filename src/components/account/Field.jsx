@@ -49,8 +49,12 @@ export function ChoiceGroup({ label, name, options, value, onChange }) {
           return (
             <label
               key={option.value}
-              className={`cursor-pointer rounded-xl border px-4 py-3 transition-colors has-[:focus-visible]:ring-4 has-[:focus-visible]:ring-forest/15 ${
-                checked ? 'border-forest bg-forest/5' : 'border-line bg-white hover:border-forest/40'
+              className={`rounded-xl border px-4 py-3 transition-colors has-[:focus-visible]:ring-4 has-[:focus-visible]:ring-forest/15 ${
+                option.disabled
+                  ? 'cursor-not-allowed border-line bg-white opacity-50'
+                  : checked
+                    ? 'cursor-pointer border-forest bg-forest/5'
+                    : 'cursor-pointer border-line bg-white hover:border-forest/40'
               }`}
             >
               <input
@@ -58,6 +62,7 @@ export function ChoiceGroup({ label, name, options, value, onChange }) {
                 name={name}
                 value={option.value}
                 checked={checked}
+                disabled={option.disabled}
                 onChange={() => onChange(option.value)}
                 className="sr-only"
               />

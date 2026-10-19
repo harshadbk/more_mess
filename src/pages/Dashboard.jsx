@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
 import { CalendarDays, KeyRound, Pencil, Plus, User, Wallet } from 'lucide-react'
 import AccountLayout from '../components/account/AccountLayout.jsx'
+import ErrorBoundary from '../components/ErrorBoundary.jsx'
 import Field, { ChoiceGroup, FormError, MultiChoice } from '../components/account/Field.jsx'
 import GroupCard from '../components/account/GroupCard.jsx'
 import PaymentList, { agreedTotal } from '../components/account/PaymentList.jsx'
 import AccountSummary from '../components/account/AccountSummary.jsx'
-import DayPlanner from '../components/account/DayPlanner.jsx'
+import OrderCart from '../components/account/OrderCart.jsx'
 import Heatmap from '../components/account/Heatmap.jsx'
 import { useNotice } from '../components/Notice.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
@@ -181,6 +182,15 @@ function JoinGroupForm({ onJoined }) {
 
 /** Shown when the user eats on their own. Groups are optional. */
 function NoGroup({ onGroup }) {
+  const notify = useNotice()
+  const created = (g) => {
+    onGroup(g)
+    notify(`Group “${g.name}” created. Share invite code ${g.inviteCode} with your friends.`)
+  }
+  const joined = (g) => {
+    onGroup(g)
+    notify(`You joined ${g.name}.`)
+  }
   return (
     <section className="card p-6" aria-labelledby="group-title">
       <h2 id="group-title" className="flex items-center gap-2 text-lg font-extrabold">
@@ -192,9 +202,9 @@ function NoGroup({ onGroup }) {
         together.
       </p>
       <div className="mt-5 space-y-6">
-        <CreateGroupForm onCreated={onGroup} />
+        <CreateGroupForm onCreated={created} />
         <div className="border-t border-line" />
-        <JoinGroupForm onJoined={onGroup} />
+        <JoinGroupForm onJoined={joined} />
       </div>
     </section>
   )
@@ -272,7 +282,7 @@ function RecordPaymentForm({ group, onAdded }) {
   )
 }
 
-function MyHeatmap({ refreshKey }) {
+function MyHeatmap({ refreshKey, groupName }) {
   const [days, setDays] = useState(null)
   useEffect(() => {
     api('/orders/history?days=182')
@@ -286,7 +296,8 @@ function MyHeatmap({ refreshKey }) {
         My tiffin calendar
       </h2>
       <p className="mt-1 mb-4 text-sm text-muted">
-        Last 6 months. Darker days = more tiffins. Hover a day for details.
+        Last 6 months{groupName ? `: your own tiffins plus group “${groupName}”'s` : ''}. Darker days = more tiffins.
+        Hover a day for details.
       </p>
       {days ? <Heatmap days={days} showAmount /> : <p className="text-muted">Loading…</p>}
     </section>
@@ -332,13 +343,40 @@ export default function Dashboard() {
       </p>
       <FormError message={error} />
       <div className="mt-8">
-        <AccountSummary refreshKey={refreshKey} />
+        <ErrorBoundary name="Your account">
+          <AccountSummary refreshKey={refreshKey} />
+        </ErrorBoundary>
       </div>
 
-      <div className="mt-8 grid gap-8 lg:grid-cols-[1fr_24rem]">
-        <div className="space-y-8">
-          <DayPlanner planKey={user.meals.join()} onSaved={refresh} />
-          <MyHeatmap refreshKey={refreshKey} />
+      {/* Phones: planner, then plan + group, then calendar + payments. Large screens: plan + group on the right. */}
+      <div className="mt-8 grid gap-8 lg:grid-cols-[1fr_24rem] lg:items-start">
+        <div className="lg:col-start-1">
+          <ErrorBoundary name="Your order">
+            <OrderCart planKey={`${user.meals.join()}|${refreshKey}`} onSaved={refresh} />
+          </ErrorBoundary>
+        </div>
+
+        <aside className="space-y-8 lg:col-start-2 lg:row-span-2 lg:row-start-1">
+          <ErrorBoundary name="Your plan">
+            <PlanCard />
+          </ErrorBoundary>
+          {group === undefined ? (
+            <p className="text-muted">Loading group…</p>
+          ) : group ? (
+            <ErrorBoundary name="Your group">
+              <GroupCard group={group} currentUser={user} onChange={changeGroup} />
+            </ErrorBoundary>
+          ) : (
+            <ErrorBoundary name="Groups">
+              <NoGroup onGroup={changeGroup} />
+            </ErrorBoundary>
+          )}
+        </aside>
+
+        <div className="space-y-8 lg:col-start-1">
+          <ErrorBoundary name="Your tiffin calendar">
+            <MyHeatmap refreshKey={refreshKey} groupName={group?.name} />
+          </ErrorBoundary>
 
           <section aria-labelledby="payments-title">
             <div className="flex flex-wrap items-end justify-between gap-3">
@@ -370,17 +408,6 @@ export default function Dashboard() {
             </div>
           </section>
         </div>
-
-        <aside className="space-y-8">
-          <PlanCard />
-          {group === undefined ? (
-            <p className="text-muted">Loading group…</p>
-          ) : group ? (
-            <GroupCard group={group} currentUser={user} onChange={changeGroup} />
-          ) : (
-            <NoGroup onGroup={changeGroup} />
-          )}
-        </aside>
       </div>
     </AccountLayout>
   )

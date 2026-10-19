@@ -1,4 +1,4 @@
-import { ArrowRight, CalendarCheck, Leaf, MapPin, Users } from 'lucide-react'
+import { ArrowRight, CalendarCheck, Leaf, MapPin, ShoppingBag, Users } from 'lucide-react'
 import WhatsAppButton from './WhatsAppButton.jsx'
 import { businessConfig } from '../data/businessConfig.js'
 import { messages } from '../utils/whatsapp.js'
@@ -54,10 +54,14 @@ export default function Hero() {
             find your place at {businessConfig.name}.
           </p>
 
-          <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+          <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
             <a href="#menu" className="btn-primary group">
               Explore Our Menu
               <ArrowRight className="size-[18px] transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
+            </a>
+            <a href="#order-today" className="btn-saffron">
+              <ShoppingBag className="size-[18px]" aria-hidden="true" />
+              Order for Today
             </a>
             <WhatsAppButton signUp="Join Sai Mess" message={messages.join()} className="btn-outline">
               Join Us on WhatsApp

@@ -38,6 +38,8 @@ export default function Heatmap({ days, weeks = 26, showAmount = false, onSelect
       const firstOfMonth = week.find((d) => d && d.endsWith('-01'))
       if (firstOfMonth || columns.length === 0) {
         const label = new Date(`${firstOfMonth ?? date}T00:00:00`).toLocaleDateString('en-IN', { month: 'short' })
+        // A label needs ~3 columns of room; if the previous one is too close, this (real) month start wins.
+        if (months.length && columns.length - months.at(-1).index < 3) months.pop()
         months.push({ index: columns.length, label })
       }
       columns.push(week)

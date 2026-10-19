@@ -47,7 +47,13 @@ export default function UsersTab({ users, groups, currentUser, onToggleActive, o
                     <span className="text-muted">–</span>
                   )}
                 </td>
-                <td className="px-4 py-3">{groupOf(u) ?? <span className="text-muted">Individual</span>}</td>
+                <td className="px-4 py-3">
+                  {u.role === 'admin' ? (
+                    <span className="text-muted">–</span>
+                  ) : (
+                    (groupOf(u) ?? <span className="text-muted">Individual</span>)
+                  )}
+                </td>
                 <td className="px-4 py-3">
                   {u.role === 'user' && (
                     <button
