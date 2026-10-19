@@ -58,7 +58,7 @@ export default function DuesTab() {
       </p>
       <p className="text-sm text-muted">
         Charges = every tiffin up to today at that day's price, plus specials. Paid counts only payments both sides
-        agreed. Groups include their members' own payments. Non-membership orders count only once marked
+        agreed. Groups include their members' own payments. Non-membership orders count once confirmed as
         paid in the Orders tab, so they never have anything pending.
       </p>
 

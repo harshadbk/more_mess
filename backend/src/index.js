@@ -9,6 +9,7 @@ import orderRoutes from './routes/orders.js'
 import paymentRoutes from './routes/payments.js'
 import menuRoutes from './routes/menu.js'
 import reviewRoutes from './routes/reviews.js'
+import Review from './models/Review.js'
 import guestOrderRoutes from './routes/guestOrders.js'
 import { catchUp, dropExpiredDishes, fixOldData, syncUpcomingMenus } from './tiffins.js'
 
@@ -45,6 +46,7 @@ const port = process.env.PORT || 5000
 await connectDB()
 checkAdmin() // the admin comes from .env only; nothing is saved in the database
 await fixOldData()
+await Review.syncIndexes() // reviews: one per customer and one per visitor's number
 await catchUp() // create today's tiffin records
 await syncUpcomingMenus() // match today's and later orders to the posted menu
 await dropExpiredDishes() // a meal's dishes go once its cut-off time has passed

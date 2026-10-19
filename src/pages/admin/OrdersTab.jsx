@@ -53,17 +53,18 @@ function OrderRows({ rows, kind }) {
 }
 
 const STATUS = {
-  new: { label: 'To confirm', tone: 'bg-saffron-soft text-charcoal' },
-  confirmed: { label: 'Confirmed · payment due', tone: 'bg-forest/10 text-forest' },
-  paid: { label: 'Paid', tone: 'bg-fresh text-white' },
+  new: { label: 'Waiting for payment', tone: 'bg-saffron-soft text-charcoal' },
+  confirmed: { label: 'Confirmed · paid', tone: 'bg-fresh text-white' }, // older orders, until the server moves them
+  paid: { label: 'Confirmed · paid', tone: 'bg-fresh text-white' },
   cancelled: { label: 'Cancelled', tone: 'bg-[#b4442a]/10 text-[#b4442a]' },
 }
 const time = (iso) => new Date(iso).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })
 
-/** One non-membership order: confirm it, then record the payment (with the final price) once it came in. */
+/** One non-membership order: once the customer has paid, confirm it with the amount received. */
 function GuestRow({ g, onStatus }) {
   const [amount, setAmount] = useState(String(g.amount))
   useEffect(() => setAmount(String(g.amount)), [g.amount])
+  const paid = g.status === 'paid' || g.status === 'confirmed'
 
   return (
     <li className={`py-4 ${g.status === 'cancelled' ? 'opacity-60' : ''}`}>
@@ -96,14 +97,6 @@ function GuestRow({ g, onStatus }) {
             +{g.phone.slice(0, 2)} {g.phone.slice(2)}
           </a>
           {g.status === 'new' && (
-            <>
-              <strong className="tabular-nums">{rupees(g.amount)}</strong>
-              <button type="button" onClick={() => onStatus(g, 'confirmed')} className="btn-primary min-h-9 px-3 text-sm">
-                Confirm order
-              </button>
-            </>
-          )}
-          {g.status === 'confirmed' && (
             <form
               className="flex items-center gap-2"
               onSubmit={(e) => {
@@ -125,19 +118,19 @@ function GuestRow({ g, onStatus }) {
                 />
               </label>
               <button type="submit" className="btn-primary min-h-9 px-3 text-sm">
-                Payment received
+                Confirm · paid
               </button>
             </form>
           )}
-          {g.status === 'paid' && (
+          {paid && (
             <>
               <strong className="text-fresh tabular-nums">{rupees(g.amount)} received</strong>
-              <button type="button" onClick={() => onStatus(g, 'confirmed')} className="btn-outline min-h-9 px-3 text-sm">
-                Undo payment
+              <button type="button" onClick={() => onStatus(g, 'new')} className="btn-outline min-h-9 px-3 text-sm">
+                Undo
               </button>
             </>
           )}
-          {(g.status === 'new' || g.status === 'confirmed') && (
+          {g.status === 'new' && (
             <button type="button" onClick={() => onStatus(g, 'cancelled')} className="btn-outline min-h-9 px-3 text-sm">
               Cancel
             </button>
@@ -269,16 +262,13 @@ export default function OrdersTab({ date, setDate }) {
               </li>
               <li aria-hidden="true">→</li>
               <li>
-                <strong className="text-charcoal">2.</strong> Reply on WhatsApp, then <em>Confirm order</em>
-              </li>
-              <li aria-hidden="true">→</li>
-              <li>
-                <strong className="text-charcoal">3.</strong> Once the money is in, <em>Payment received</em>
+                <strong className="text-charcoal">2.</strong> Once they have paid, check the amount and tap{' '}
+                <em>Confirm · paid</em>
               </li>
             </ol>
             <p className="mt-1 text-xs text-muted">
-              Every order that isn’t cancelled is in the kitchen list. Only paid ones count as revenue: in the
-              monthly sheet, the heatmap and the dues.
+              Every order that isn’t cancelled is in the kitchen list. Confirmed (paid) orders count as revenue
+              everywhere: here, the monthly sheet, the heatmap and the dues.
             </p>
             {!data.guests?.length ? (
               <p className="mt-3 text-muted">No non-membership orders.</p>

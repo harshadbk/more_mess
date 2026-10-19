@@ -178,11 +178,11 @@ router.get('/orders', async (req, res) => {
   })
 })
 
-// Move a non-membership (WhatsApp) order along: { status: 'new' | 'confirmed' | 'paid' | 'cancelled', amount? }
-// 'paid' = the admin checked the money came in; `amount` is the final price agreed on WhatsApp.
+// Confirm, cancel or reopen a non-membership (WhatsApp) order: { status: 'paid' | 'cancelled' | 'new', amount? }
+// 'paid' = confirmed: the admin checked the money came in; `amount` is the final price agreed on WhatsApp.
 router.patch('/guest-orders/:id', async (req, res) => {
-  const { status } = req.body
-  if (!['new', 'confirmed', 'paid', 'cancelled'].includes(status)) {
+  const status = req.body.status === 'confirmed' ? 'paid' : req.body.status
+  if (!['new', 'paid', 'cancelled'].includes(status)) {
     return res.status(400).json({ error: 'Pick a status.' })
   }
   const order = await GuestOrder.findById(req.params.id)

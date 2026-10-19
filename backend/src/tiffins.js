@@ -723,6 +723,10 @@ export async function removeGroup(group, leaving = null) {
 
 // Converts data saved by older versions of this app. Safe to run on every start.
 export async function fixOldData() {
+  // Non-membership orders: "confirmed" now means "confirmed and paid".
+  await GuestOrder.collection.updateMany({ status: 'confirmed' }, [
+    { $set: { status: 'paid', paidAt: { $ifNull: ['$paidAt', '$updatedAt'] } } },
+  ])
   // Meals saved as 'lunch' / 'dinner' / 'both' -> lists. ("not an array" so new lists are never touched.)
   const old = { both: ['lunch', 'dinner'], lunch: ['lunch'], dinner: ['dinner'] }
   for (const [value, meals] of Object.entries(old)) {

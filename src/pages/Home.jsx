@@ -26,16 +26,16 @@ export default function Home() {
       <Navbar />
       <main id="main">
         <Hero />
-        <Benefits />
         <TodaysMenu />
         <MenuSection />
         <MealPlans />
+        <Benefits />
+        <HowToJoin />
+        <TodayOrder />
         <Gallery />
         <About />
-        <HowToJoin />
         <Testimonials />
         <FAQ />
-        <TodayOrder />
         <Contact />
       </main>
       <Footer />

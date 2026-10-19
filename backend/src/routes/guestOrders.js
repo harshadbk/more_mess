@@ -2,6 +2,7 @@ import crypto from 'node:crypto'
 import { Router } from 'express'
 import Dish from '../models/Dish.js'
 import GuestOrder from '../models/GuestOrder.js'
+import { phoneOf, rateLimit } from '../rateLimit.js'
 import { getSettings, itemFor, itemsAmount, lockedMeals, MEALS, nonVegDay, servedDishes, today } from '../tiffins.js'
 
 // "Order for today only" from the home page: no login. Saved when the WhatsApp message is prepared,
@@ -10,24 +11,8 @@ const router = Router()
 
 const fail = (status, message) => Object.assign(new Error(message), { status })
 
-// Same rule as the website: a 10-digit Indian mobile, stored as '91XXXXXXXXXX'.
-function phoneOf(raw) {
-  let digits = String(raw ?? '').replace(/\D/g, '').replace(/^0+/, '')
-  if (digits.length === 12 && digits.startsWith('91')) digits = digits.slice(2)
-  return /^[1-9]\d{9}$/.test(digits) ? `91${digits}` : ''
-}
-
 // Nobody needs more than a few orders a minute: stops a script from filling the kitchen list.
-const recent = new Map() // ip -> [timestamps]
-function rateLimit(req, _res, next) {
-  const now = Date.now()
-  const hits = (recent.get(req.ip) ?? []).filter((t) => now - t < 10 * 60 * 1000)
-  if (hits.length >= 10) return next(fail(429, 'Too many orders from here. Please message us on WhatsApp.'))
-  hits.push(now)
-  recent.set(req.ip, hits)
-  if (recent.size > 5000) recent.clear()
-  next()
-}
+const limit = rateLimit(10, 10, 'Too many orders from here. Please message us on WhatsApp.')
 
 const MAX_PER_PHONE = 5 // open orders per number per day
 
@@ -75,7 +60,7 @@ async function orderFields(body) {
 const shown = (o) => ({ _id: o._id, code: o.code, amount: o.amount, items: o.items, status: o.status })
 
 // Place an order: { name, phone, meals, choice: { meal: dishId }, count, food, delivery, address, note }
-router.post('/', rateLimit, async (req, res) => {
+router.post('/', limit, async (req, res) => {
   const fields = await orderFields(req.body)
   const open = await GuestOrder.countDocuments({ phone: fields.phone, date: fields.date, status: { $ne: 'cancelled' } })
   if (open >= MAX_PER_PHONE) throw fail(400, 'This number already has several orders today. Please message us on WhatsApp.')
@@ -93,7 +78,7 @@ router.post('/', rateLimit, async (req, res) => {
 })
 
 // Fix the order before sending it (after "Edit order"): same body, plus the token from placing it.
-router.put('/:id', rateLimit, async (req, res) => {
+router.put('/:id', limit, async (req, res) => {
   const order = await GuestOrder.findById(req.params.id).select('+token')
   const token = String(req.body.token ?? '')
   const same =

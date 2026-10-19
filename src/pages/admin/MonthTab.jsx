@@ -370,7 +370,7 @@ export default function MonthTab({ group = null, me = null, refreshKey = 0 }) {
               </h4>
               <p className="mt-1 text-xs text-muted">
                 “Today only” orders from the home page, by people without an account. An order shows here once you
-                mark it <em>Payment received</em> in the Orders tab.
+                confirm it as paid in the Orders tab.
               </p>
               {guests.length === 0 ? (
                 <p className="mt-3 text-sm text-muted">No paid non-membership orders this month.</p>

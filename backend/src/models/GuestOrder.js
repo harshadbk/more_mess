@@ -2,9 +2,10 @@ import mongoose from 'mongoose'
 import { itemSchema } from './Order.js'
 
 // A "today only" order from the home page, by someone without an account (a non-membership order).
-// Saved when they prepare the WhatsApp message: new -> confirmed (after replying on WhatsApp) -> paid
-// (the admin checked the money came in). The kitchen cooks every order that isn't cancelled, but only
-// paid ones count as revenue (monthly sheet, heatmap, dues).
+// Saved when they prepare the WhatsApp message (status 'new'). The admin confirms it once the customer
+// has paid ('paid', with the final amount), or cancels it. The kitchen cooks every order that isn't
+// cancelled; confirmed (paid) ones count as revenue everywhere: orders, monthly sheet, heatmap, dues.
+// ('confirmed' is an older in-between step; such orders are moved to 'paid' when the server starts.)
 const guestOrderSchema = new mongoose.Schema(
   {
     code: { type: String, required: true, unique: true }, // short reference, e.g. "G4K7Q", also in the message

@@ -29,7 +29,7 @@ export default function ActivityTab({ onOpenDay }) {
         Tiffins from the mess, day by day
       </h3>
       <p className="mt-1 mb-5 text-sm text-muted">
-        Last 12 months: all customers, plus non-membership orders once paid. Pick a meal to see just that meal.
+        Last 12 months: all customers, plus confirmed (paid) non-membership orders. Pick a meal to see just that meal.
         Darker = more tiffins. Click a day to see who ate what.
       </p>
       <FormError message={error} />

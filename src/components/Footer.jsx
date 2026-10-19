@@ -1,10 +1,18 @@
-import { Camera, ExternalLink, Globe, MapPin, MessageCircle, Phone } from 'lucide-react'
-import Logo from './Logo.jsx'
-import WhatsAppButton from './WhatsAppButton.jsx'
-import { navLinks } from './Navbar.jsx'
-import { businessConfig } from '../data/businessConfig.js'
-import { mealPlans } from '../data/mealPlans.js'
-import { messages } from '../utils/whatsapp.js'
+import {
+  Camera,
+  Code2,
+  ExternalLink,
+  Globe,
+  MapPin,
+  MessageCircle,
+  Phone,
+} from "lucide-react";
+import Logo from "./Logo.jsx";
+import WhatsAppButton from "./WhatsAppButton.jsx";
+import { navLinks } from "./Navbar.jsx";
+import { businessConfig } from "../data/businessConfig.js";
+import { mealPlans } from "../data/mealPlans.js";
+import { messages } from "../utils/whatsapp.js";
 import {
   formatIndianNumber,
   fullAddress,
@@ -14,26 +22,36 @@ import {
   phoneHref,
   socialLinks,
   whatsappDigits,
-} from '../utils/business.js'
+} from "../utils/business.js";
 
-const socialIcon = { instagram: Camera, facebook: Globe, googleBusiness: MapPin }
-const year = new Date().getFullYear()
+const socialIcon = {
+  instagram: Camera,
+  facebook: Globe,
+  googleBusiness: MapPin,
+};
+const year = new Date().getFullYear();
 
-const linkClass = 'text-white/70 transition-colors hover:text-saffron'
+const linkClass = "text-white/70 transition-colors hover:text-saffron";
 
 export default function Footer() {
   return (
     <footer className="bg-forest-deep text-white">
       <div className="container-page grid gap-12 py-16 sm:grid-cols-2 lg:grid-cols-[1.4fr_1fr_1fr_1.3fr] lg:gap-10">
         <div>
-          <a href="#home" className="inline-block rounded-lg" aria-label="Sai Mess — back to top">
+          <a
+            href="#home"
+            className="inline-block rounded-lg"
+            aria-label="Sai Mess — back to top"
+          >
             <Logo light />
           </a>
-          <p className="mt-5 max-w-xs leading-relaxed text-white/70">{businessConfig.tagline}</p>
+          <p className="mt-5 max-w-xs leading-relaxed text-white/70">
+            {businessConfig.tagline}
+          </p>
           {socialLinks.length > 0 && (
             <ul className="mt-6 flex flex-wrap gap-2">
               {socialLinks.map((s) => {
-                const Icon = socialIcon[s.id] ?? ExternalLink
+                const Icon = socialIcon[s.id] ?? ExternalLink;
                 return (
                   <li key={s.id}>
                     <a
@@ -47,14 +65,16 @@ export default function Footer() {
                       <span className="sr-only">(opens in a new tab)</span>
                     </a>
                   </li>
-                )
+                );
               })}
             </ul>
           )}
         </div>
 
         <nav aria-label="Footer">
-          <h2 className="font-display text-sm font-bold tracking-widest text-saffron uppercase">Explore</h2>
+          <h2 className="font-display text-sm font-bold tracking-widest text-saffron uppercase">
+            Explore
+          </h2>
           <ul className="mt-5 space-y-3 text-[15px]">
             {navLinks.map((l) => (
               <li key={l.id}>
@@ -67,7 +87,9 @@ export default function Footer() {
         </nav>
 
         <div>
-          <h2 className="font-display text-sm font-bold tracking-widest text-saffron uppercase">Meals</h2>
+          <h2 className="font-display text-sm font-bold tracking-widest text-saffron uppercase">
+            Meals
+          </h2>
           <ul className="mt-5 space-y-3 text-[15px]">
             <li>
               <a href="#menu" className={linkClass}>
@@ -85,18 +107,26 @@ export default function Footer() {
         </div>
 
         <div>
-          <h2 className="font-display text-sm font-bold tracking-widest text-saffron uppercase">Get in touch</h2>
+          <h2 className="font-display text-sm font-bold tracking-widest text-saffron uppercase">
+            Get in touch
+          </h2>
           {(fullAddress || hasPhone || hasWhatsApp) && (
             <ul className="mt-5 space-y-4 text-[15px] text-white/70">
               {fullAddress && (
                 <li className="flex gap-3">
-                  <MapPin className="mt-0.5 size-[18px] shrink-0 text-saffron" aria-hidden="true" />
+                  <MapPin
+                    className="mt-0.5 size-[18px] shrink-0 text-saffron"
+                    aria-hidden="true"
+                  />
                   {fullAddress}
                 </li>
               )}
               {hasPhone && (
                 <li className="flex gap-3">
-                  <Phone className="mt-0.5 size-[18px] shrink-0 text-saffron" aria-hidden="true" />
+                  <Phone
+                    className="mt-0.5 size-[18px] shrink-0 text-saffron"
+                    aria-hidden="true"
+                  />
                   <a href={phoneHref} className={linkClass}>
                     {formatIndianNumber(phoneDigits)}
                   </a>
@@ -104,8 +134,15 @@ export default function Footer() {
               )}
               {hasWhatsApp && (
                 <li className="flex gap-3">
-                  <MessageCircle className="mt-0.5 size-[18px] shrink-0 text-saffron" aria-hidden="true" />
-                  <WhatsAppButton icon={false} className={linkClass} message={messages.general()}>
+                  <MessageCircle
+                    className="mt-0.5 size-[18px] shrink-0 text-saffron"
+                    aria-hidden="true"
+                  />
+                  <WhatsAppButton
+                    icon={false}
+                    className={linkClass}
+                    message={messages.general()}
+                  >
                     WhatsApp {formatIndianNumber(whatsappDigits)}
                   </WhatsAppButton>
                 </li>
@@ -128,11 +165,24 @@ export default function Footer() {
             © {year} {businessConfig.name}. All rights reserved.
           </p>
           <p className="max-w-xl md:text-right">
-            Privacy: this website does not store form submissions on a server. Enquiries are sent only through WhatsApp
-            when you choose to send them.
+            Privacy: your details and orders are used only to run{" "}
+            {businessConfig.name} and are never shared.
+          </p>
+        </div>
+      </div>
+
+      {/* Developer credit: its own line, with room below so the floating WhatsApp button never covers it. */}
+      <div className="border-t border-white/10 bg-black/15">
+        <div className="container-page flex justify-center pt-5 pb-24 sm:pb-6">
+          <p className="inline-flex flex-wrap items-center justify-center gap-x-3 gap-y-2 rounded-full border border-white/10 bg-white/5 px-5 py-2.5 text-sm text-white/70 shadow-[0_0_30px_-10px_rgb(245_158_66/0.5)]">
+            <Code2 className="size-4 text-saffron" aria-hidden="true" />
+            <span>Designed &amp; developed by</span>
+            <span className="bg-gradient-to-r from-saffron via-[#ffd27a] to-[#9be3b0] bg-clip-text font-display text-base font-extrabold tracking-wide text-transparent">
+              Harshad Khatale
+            </span>
           </p>
         </div>
       </div>
     </footer>
-  )
+  );
 }
