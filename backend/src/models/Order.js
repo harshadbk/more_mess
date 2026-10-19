@@ -7,9 +7,12 @@ const itemSchema = new mongoose.Schema(
     meal: { type: String, enum: ['breakfast', 'lunch', 'dinner', 'special'], required: true },
     dish: { type: mongoose.Schema.Types.ObjectId, ref: 'Dish', default: null }, // null = standard tiffin
     name: { type: String, required: true }, // copied, so the bill never changes later
+    food: { type: String, enum: ['veg', 'non-veg'], default: 'veg' }, // copied too, used to pick a replacement
     price: { type: Number, required: true, min: 0 }, // ₹ for one
     base: { type: Boolean, default: false }, // true = uses the meal's standard price (follows price changes)
     qty: { type: Number, required: true, min: 1 },
+    // Group orders only: the members ticked as eating this meal (qty = how many). Empty on older orders.
+    members: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   },
   { _id: false },
 )

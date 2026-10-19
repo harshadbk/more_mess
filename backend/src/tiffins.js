@@ -4,9 +4,15 @@
 //   - a person eating alone  -> their order, from their plan (user.meals)
 //   - a group                -> ONE order for everyone, 1 tiffin per member who takes that meal.
 //                               Only the group's owner can change it (e.g. "only 6 eat lunch today").
-// An order is a list of items: { meal, dish, name, price, qty }. The bill is sum(price × qty).
+// An order is a list of items: { meal, dish, name, food, price, qty }. The bill is sum(price × qty).
+// For breakfast, lunch and dinner an order has ONE option per meal (a group: the same option for
+// everyone eating it, with the members who eat it ticked). Specials are extras and can be mixed.
+// Inside a group, the bill is split by those ticks (see splitOrder); the owner pays the mess and
+// records what each member paid them (MemberPayment).
+// Non-veg is only served on Sundays and Wednesdays.
 import Dish from './models/Dish.js'
 import Group from './models/Group.js'
+import MemberPayment from './models/MemberPayment.js'
 import Order from './models/Order.js'
 import Payment from './models/Payment.js'
 import Settings from './models/Settings.js'
@@ -27,6 +33,12 @@ export function addDays(date, days) {
   d.setUTCDate(d.getUTCDate() + days)
   return d.toISOString().slice(0, 10)
 }
+// Sunday (0) and Wednesday (3) are the only non-veg days.
+export const nonVegDay = (date) => [0, 3].includes(new Date(`${date}T00:00:00Z`).getUTCDay())
+
+// The dishes that can actually be served on `date` (non-veg dishes only on non-veg days).
+export const servedDishes = (dishes, date) => dishes.filter((d) => d.food !== 'non-veg' || nonVegDay(date))
+
 const nowTime = () => new Date().toLocaleTimeString('en-GB', { timeZone: 'Asia/Kolkata', hour12: false }).slice(0, 5)
 
 /* -------------------------------------------------------------- Settings */
@@ -58,22 +70,31 @@ export async function dropExpiredDishes() {
 export const itemsAmount = (items) => items.reduce((sum, i) => sum + i.price * i.qty, 0)
 
 // One cart line for a dish (or the plain "Lunch tiffin" when no dish is chosen/posted).
-function itemFor(meal, dish, qty, prices) {
-  if (!dish) return { meal, dish: null, name: `${LABEL[meal]} tiffin`, price: prices[meal] || 0, base: true, qty }
+function itemFor(meal, dish, qty, prices, food = 'veg') {
+  if (!dish) return { meal, dish: null, name: `${LABEL[meal]} tiffin`, food, price: prices[meal] || 0, base: true, qty }
   const own = dish.price > 0
-  return { meal, dish: dish._id, name: dish.name, price: own ? dish.price : prices[meal] || 0, base: !own, qty }
+  const price = own ? dish.price : prices[meal] || 0
+  return { meal, dish: dish._id, name: dish.name, food: dish.food, price, base: !own, qty }
 }
 
-// Plan items from meal counts like { lunch: 5, dinner: 3 }: the first posted option for each meal.
-function planItems(counts, dishes, prices) {
-  return MEALS.filter((meal) => counts[meal] > 0).map((meal) =>
-    itemFor(
-      meal,
-      dishes.find((d) => d.meal === meal),
-      counts[meal],
-      prices,
-    ),
-  )
+// The option someone gets when they haven't picked one: the first posted dish of their kind
+// (non-veg eaters get non-veg on non-veg days), otherwise the first veg dish, otherwise any.
+// `dishes` must already be the served ones for that day.
+function defaultDish(dishes, meal, food = 'veg') {
+  const options = dishes.filter((d) => d.meal === meal)
+  const want = food === 'non-veg' ? 'non-veg' : 'veg'
+  return options.find((d) => d.food === want) ?? options.find((d) => d.food !== 'non-veg') ?? options[0]
+}
+
+// Plan items for these people on `date`: the default option for each meal, 1 tiffin per person who
+// takes it. For a group, the eaters are ticked on each line.
+function planItems(people, date, dishes, prices, food = 'veg', group = false) {
+  return MEALS.map((meal) => [meal, people.filter((u) => eats(u, date) && u.meals.includes(meal))])
+    .filter(([, eaters]) => eaters.length)
+    .map(([meal, eaters]) => ({
+      ...itemFor(meal, defaultDish(dishes, meal, food), eaters.length, prices),
+      ...(group ? { members: eaters.map((u) => u._id) } : {}),
+    }))
 }
 
 /* -------------------------------------------------------------- Accounts */
@@ -83,10 +104,6 @@ export const startOf = (user) =>
   user.startDate || addDays(user.createdAt.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }), 1)
 
 const eats = (user, date) => user.role === 'user' && user.active && startOf(user) <= date
-
-// How many of these people take each meal on `date`, from their plans.
-const mealCounts = (people, date) =>
-  Object.fromEntries(MEALS.map((meal) => [meal, people.filter((u) => eats(u, date) && u.meals.includes(meal)).length]))
 
 // The account a user orders under: their group if they are in one, otherwise themselves.
 export async function accountOf(user) {
@@ -113,20 +130,22 @@ async function fillOrders(from, to) {
 
   const records = []
   for (let date = from; date <= to; date = addDays(date, 1)) {
-    const dishes = await Dish.find({ date }).sort({ createdAt: 1 })
-    const add = (kind, account, people) => {
+    const dishes = servedDishes(await Dish.find({ date }).sort({ createdAt: 1 }), date)
+    const add = (kind, account, people, food) => {
       if (have.has(`${account}|${date}`)) return
-      const items = planItems(mealCounts(people, date), dishes, prices)
+      const items = planItems(people, date, dishes, prices, food, kind === 'group')
       if (items.length) records.push({ kind, account, date, items, amount: itemsAmount(items) })
     }
-    for (const u of users) if (!inGroup.has(String(u._id))) add('user', u._id, [u])
+    for (const u of users) if (!inGroup.has(String(u._id))) add('user', u._id, [u], u.foodPreference)
     for (const g of groups) {
       // A group's automatic orders start the day after it was created (no double counting on day one).
       if (g.createdAt.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }) >= date) continue
+      // A group starts on veg; its owner switches the whole group to non-veg on non-veg days.
       add(
         'group',
         g._id,
         users.filter((u) => g.members.some((m) => m.equals(u._id))),
+        'veg',
       )
     }
   }
@@ -152,21 +171,23 @@ export async function catchUp() {
 // Everything the cart screen needs for one day.
 export async function dayFor(user, date) {
   if (date <= today()) await Promise.all([catchUp(), dropExpiredDishes()])
-  const [acc, settings, dishes] = await Promise.all([
+  const [acc, settings, allDishes] = await Promise.all([
     accountOf(user),
     getSettings(),
     Dish.find({ date }).sort({ createdAt: 1 }),
   ])
+  const dishes = servedDishes(allDishes, date)
+  const food = acc.kind === 'group' ? 'veg' : user.foodPreference
   let order = await Order.findOne({ account: acc.id, date })
   let startsOn = null
+  const people = acc.kind === 'group' ? await User.find({ _id: { $in: acc.group.members } }).sort({ name: 1 }) : [user]
 
   if (!order) {
     // Today/past with no order = daily tiffins hadn't started yet (new member or new group): empty cart.
     // Future day = what the plan(s) will give.
     let items = []
     if (date > today()) {
-      const people = acc.kind === 'group' ? await User.find({ _id: { $in: acc.group.members } }) : [user]
-      items = planItems(mealCounts(people, date), dishes, settings.prices)
+      items = planItems(people, date, dishes, settings.prices, food, acc.kind === 'group')
       if (acc.kind === 'group' && acc.group.createdAt.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }) >= date)
         items = []
     }
@@ -175,47 +196,74 @@ export async function dayFor(user, date) {
     order = { items, custom: false, planned: true, amount: itemsAmount(items) }
   }
 
+  // On non-veg days the group's owner sees how many members prefer non-veg, to pick for everyone.
+  const nonVegMembers = acc.kind === 'group' ? people.filter((u) => u.foodPreference === 'non-veg').length : 0
+
   return {
     date,
-    account: { kind: acc.kind, name: acc.name, canEdit: acc.canEdit, people: acc.people },
+    account: {
+      kind: acc.kind,
+      name: acc.name,
+      canEdit: acc.canEdit,
+      people: acc.people,
+      nonVegMembers,
+      // A group's members, for ticking who eats each meal.
+      members:
+        acc.kind === 'group'
+          ? people.map((u) => ({ _id: u._id, name: u.name, foodPreference: u.foodPreference, meals: u.meals }))
+          : [],
+    },
     order: { items: order.items, custom: order.custom, planned: Boolean(order.planned), amount: order.amount },
     startsOn: order.items.length ? null : startsOn,
     dishes,
+    nonVegDay: nonVegDay(date),
     prices: settings.prices,
     cutoffs: settings.cutoffs,
     locked: lockedMeals(date, settings.cutoffs),
   }
 }
 
-// Save the cart for a day: items = [{ meal, dish (id or null), qty }].
+// Save the cart for a day: items = [{ meal, dish (id or null), qty, members? }].
+// Breakfast, lunch and dinner: one option each, 1 tiffin for a person. A group sends `members` (the ticked
+// members eating that meal) and gets one tiffin each.
 export async function saveDay(user, date, rawItems = []) {
   if (!isDate(date)) throw fail(400, 'Pick a date.')
   if (date < today()) throw fail(400, 'You cannot change a past day.')
   const acc = await accountOf(user)
   if (!acc.canEdit) throw fail(403, "Only the group's owner can change the group's order.")
 
-  const [settings, dishes, existing] = await Promise.all([
+  const [settings, allDishes, existing] = await Promise.all([
     getSettings(),
     Dish.find({ date }),
     Order.findOne({ account: acc.id, date }),
   ])
+  const dishes = servedDishes(allDishes, date)
   const locked = lockedMeals(date, settings.cutoffs)
-  const max = acc.kind === 'group' ? 100 : 10
+  const maxOf = (meal) => (meal === 'special' ? (acc.kind === 'group' ? 100 : 10) : acc.people)
 
   // Locked meals keep what they had; the rest come from the cart.
   const items = (existing?.items ?? []).filter((i) => locked.includes(i.meal)).map((i) => i.toObject())
   for (const raw of Array.isArray(rawItems) ? rawItems : []) {
-    const qty = Math.min(max, Math.floor(Number(raw.qty) || 0))
     const meal = raw.meal
-    if (qty < 1 || locked.includes(meal) || ![...MEALS, 'special'].includes(meal)) continue
+    if (locked.includes(meal) || ![...MEALS, 'special'].includes(meal)) continue
+    // Group meals: only real members, each once.
+    const ticked =
+      acc.kind === 'group' && meal !== 'special' && Array.isArray(raw.members)
+        ? acc.group.members.filter((m) => raw.members.some((id) => String(id) === String(m)))
+        : null
+    const qty = ticked ? ticked.length : Math.min(maxOf(meal), Math.floor(Number(raw.qty) || 0))
+    if (qty < 1) continue
     let dish = null
     if (raw.dish) {
       dish = dishes.find((d) => d._id.equals(raw.dish) && d.meal === meal)
       if (!dish) continue // not on that day's menu
     } else if (meal === 'special') continue // specials must be a real dish
+    if (meal !== 'special' && items.some((i) => i.meal === meal)) {
+      throw fail(400, `Pick just one ${meal} option${acc.kind === 'group' ? ' for the whole group' : ''}.`)
+    }
     const same = items.find((i) => i.meal === meal && String(i.dish) === String(dish?._id ?? null))
-    if (same) same.qty = Math.min(max, same.qty + qty)
-    else items.push(itemFor(meal, dish, qty, settings.prices))
+    if (same) same.qty = Math.min(maxOf(meal), same.qty + qty)
+    else items.push({ ...itemFor(meal, dish, qty, settings.prices), ...(ticked ? { members: ticked } : {}) })
   }
 
   const order = await Order.findOneAndUpdate(
@@ -227,16 +275,18 @@ export async function saveDay(user, date, rawItems = []) {
 }
 
 // After the admin changes the menu for a day (today or later), bring that day's orders in line:
-// plain "Lunch tiffin" lines get the first posted lunch option, lines for a removed dish move to
-// another option (or back to plain), specials that were removed drop out, and prices are refreshed.
+// plain "Lunch tiffin" lines get the default lunch option, lines for a removed dish move to another
+// option of the same kind (veg / non-veg, or back to plain), specials that were removed drop out,
+// and prices are refreshed.
 // Meals past their cut-off are left alone (their dishes may already be deleted).
 export async function syncMenuDay(date) {
   if (date < today()) return // past bills never change
-  const [dishes, { prices, cutoffs }, orders] = await Promise.all([
+  const [allDishes, { prices, cutoffs }, orders] = await Promise.all([
     Dish.find({ date }).sort({ createdAt: 1 }),
     getSettings(),
     Order.find({ date }),
   ])
+  const dishes = servedDishes(allDishes, date)
   const locked = lockedMeals(date, cutoffs)
   for (const order of orders) {
     const items = []
@@ -247,11 +297,13 @@ export async function syncMenuDay(date) {
       }
       let dish = item.dish && dishes.find((d) => d._id.equals(item.dish) && d.meal === item.meal)
       if (!dish && item.meal === 'special') continue // that special is gone
-      if (!dish) dish = dishes.find((d) => d.meal === item.meal) // first option, or none
-      const next = itemFor(item.meal, dish ?? null, item.qty, prices)
+      if (!dish) dish = defaultDish(dishes, item.meal, item.food) // same kind, or none
+      const next = { ...itemFor(item.meal, dish ?? null, item.qty, prices, item.food), members: item.members }
       const same = items.find((i) => i.meal === next.meal && String(i.dish) === String(next.dish))
-      if (same) same.qty += next.qty
-      else items.push(next)
+      if (same) {
+        same.qty += next.qty
+        same.members = [...(same.members ?? []), ...(next.members ?? [])]
+      } else items.push(next)
     }
     order.items = items
     order.amount = itemsAmount(items)
@@ -270,6 +322,21 @@ export async function applyPrices(prices) {
   const upcoming = await Order.find({ date: { $gte: today() } })
   for (const order of upcoming) {
     for (const item of order.items) if (item.base && item.meal !== 'special') item.price = prices[item.meal] || 0
+    order.amount = itemsAmount(order.items)
+    await order.save()
+  }
+}
+
+// A member who leaves a group is unticked from the group's orders after today.
+export async function dropMemberFromGroupOrders(groupId, userId) {
+  for (const order of await Order.find({ account: groupId, date: { $gt: today() }, 'items.members': userId })) {
+    order.items = order.items
+      .map((i) => {
+        if (!i.members?.some((m) => m.equals(userId))) return i.toObject()
+        const members = i.members.filter((m) => !m.equals(userId))
+        return { ...i.toObject(), members, qty: members.length }
+      })
+      .filter((i) => i.qty > 0)
     order.amount = itemsAmount(order.items)
     await order.save()
   }
@@ -323,7 +390,16 @@ export async function accountSummary(user) {
       Order.find({ account: group._id, date: { $lte: today() } }),
       Payment.find({ ...AGREED, group: group._id }),
     ])
-    groupSummary = { name: group.name, people: group.members.length, ...summarize(orders, payments) }
+    const isOwner = group.owner.equals(user._id)
+    groupSummary = {
+      name: group.name,
+      people: group.members.length,
+      isOwner,
+      // The group's bill with the mess is only shown to the owner (they pay it).
+      ...(isOwner ? summarize(orders, payments) : {}),
+      // What this member ate in the group and still owes the owner.
+      myShare: await memberSummary(group, user._id, orders),
+    }
   }
   return { me: summarize(myOrders, myPayments), group: groupSummary }
 }
@@ -367,18 +443,149 @@ export async function allDues() {
   return [...groupRows, ...userRows]
 }
 
-// Tiffins and ₹ per day, for heatmaps: [{ date, tiffins, specials, amount }]
+// Tiffins and ₹ per day, for heatmaps:
+// [{ date, tiffins, specials, amount, meals: { breakfast, lunch, dinner }, nonVeg }]
 export function perDay(orders) {
   const days = new Map()
   for (const o of orders) {
-    const day = days.get(o.date) ?? { date: o.date, tiffins: 0, specials: 0, amount: 0 }
+    const day = days.get(o.date) ?? {
+      date: o.date,
+      tiffins: 0,
+      specials: 0,
+      amount: 0,
+      meals: { breakfast: 0, lunch: 0, dinner: 0 },
+      nonVeg: 0,
+    }
     const c = countOf(o)
     day.tiffins += c.tiffins
     day.specials += c.specials
     day.amount += o.amount
+    for (const i of o.items) {
+      if (i.meal !== 'special') day.meals[i.meal] += i.qty
+      if (i.food === 'non-veg') day.nonVeg += i.qty
+    }
     days.set(o.date, day)
   }
   return [...days.values()].sort((a, b) => a.date.localeCompare(b.date))
+}
+
+/* ------------------------------------------------- Members inside a group */
+
+const plainItem = (i) => (i.toObject ? i.toObject() : i)
+
+// Splits one group order by who ate: each ticked member owes their tiffin's price, and the day's specials
+// are shared equally by the members who ate that day. Lines without ticks (older orders) stay unassigned.
+// Returns { parts: Map(memberId -> { tiffins, amount, items }), unassigned: rupees }.
+export function splitOrder(order) {
+  const parts = new Map()
+  const partOf = (id) => {
+    if (!parts.has(id)) parts.set(id, { tiffins: 0, amount: 0, items: [] })
+    return parts.get(id)
+  }
+  let unassigned = 0
+  let extras = 0
+  for (const i of order.items) {
+    if (i.meal === 'special') extras += i.price * i.qty
+    else if (!i.members?.length) unassigned += i.price * i.qty
+    else {
+      const each = (i.price * i.qty) / i.members.length
+      for (const m of i.members) {
+        const part = partOf(String(m))
+        part.tiffins += 1
+        part.amount += each
+        part.items.push({ ...plainItem(i), qty: 1, price: each, members: undefined })
+      }
+    }
+  }
+  if (extras && parts.size) for (const part of parts.values()) part.amount += extras / parts.size
+  else unassigned += extras
+  return { parts, unassigned }
+}
+
+// One member's part of a group order, shaped like an order (for their own calendar).
+// Older orders without ticks are shown whole.
+export function memberDay(order, memberId) {
+  const { parts } = splitOrder(order)
+  if (!parts.size) return order
+  const part = parts.get(String(memberId))
+  return { date: order.date, items: part?.items ?? [], amount: part?.amount ?? 0 }
+}
+
+// What one member ate in their group (all days up to today) and what they paid the owner.
+async function memberSummary(group, memberId, orders) {
+  const paid = await MemberPayment.find({ group: group._id, member: memberId })
+  const days = new Set()
+  let tiffins = 0
+  let charges = 0
+  for (const o of orders) {
+    const part = splitOrder(o).parts.get(String(memberId))
+    if (!part) continue
+    if (part.tiffins) days.add(o.date)
+    tiffins += part.tiffins
+    charges += part.amount
+  }
+  const total = paid.reduce((sum, p) => sum + p.amount, 0)
+  return {
+    daysTaken: days.size,
+    tiffins,
+    charges: Math.round(charges),
+    paid: total,
+    pending: Math.round(charges - total),
+  }
+}
+
+// The owner's book for a month ('YYYY-MM'): per member, days and tiffins eaten, their share of the bill,
+// what they paid the owner that month, and what they still owe overall (all months).
+// Former members who ate or paid are listed too.
+export async function groupLedger(group, month) {
+  const from = `${month}-01`
+  const to = `${month}-31` // compared as text, so this covers every day of the month
+  const [orders, payments] = await Promise.all([
+    Order.find({ account: group._id, date: { $lte: today() } }),
+    MemberPayment.find({ group: group._id }).sort({ paidOn: -1, createdAt: -1 }),
+  ])
+  const rows = new Map()
+  const rowOf = (id) => {
+    if (!rows.has(id)) rows.set(id, { days: new Set(), tiffins: 0, share: 0, paid: 0, shareAll: 0, paidAll: 0 })
+    return rows.get(id)
+  }
+  for (const id of group.members) rowOf(String(id))
+  let unassigned = 0
+  for (const o of orders) {
+    const inMonth = o.date >= from && o.date <= to
+    const split = splitOrder(o)
+    if (inMonth) unassigned += split.unassigned
+    for (const [id, part] of split.parts) {
+      const row = rowOf(id)
+      row.shareAll += part.amount
+      if (!inMonth) continue
+      if (part.tiffins) row.days.add(o.date)
+      row.tiffins += part.tiffins
+      row.share += part.amount
+    }
+  }
+  for (const p of payments) {
+    const row = rowOf(String(p.member))
+    row.paidAll += p.amount
+    if (p.paidOn >= from && p.paidOn <= to) row.paid += p.amount
+  }
+  const users = await User.find({ _id: { $in: [...rows.keys()] } }, 'name')
+  const members = [...rows.entries()]
+    .map(([id, r]) => ({
+      _id: id,
+      name: users.find((u) => String(u._id) === id)?.name ?? 'Deleted user',
+      current: group.members.some((m) => String(m) === id),
+      owner: String(group.owner) === id,
+      days: r.days.size,
+      tiffins: r.tiffins,
+      share: Math.round(r.share),
+      paid: r.paid,
+      due: Math.round(r.shareAll - r.paidAll),
+    }))
+    .filter((m) => m.current || m.tiffins || m.paid || m.due)
+    .sort((a, b) => b.current - a.current || a.name.localeCompare(b.name))
+  const entries = payments.filter((p) => p.paidOn >= from && p.paidOn <= to)
+  return { month, members, entries, unassigned: Math.round(unassigned) }
 }
 
 /* ---------------------------------------------------------------- Groups */
@@ -402,8 +609,10 @@ export async function removeGroup(group, leaving = null) {
       }
     }
     await Payment.updateMany({ group: group._id }, { $set: { user: heir }, $unset: { group: 1 } })
+    await MemberPayment.deleteMany({ group: group._id }) // money between members only made sense in the group
   } else {
     await Order.deleteMany({ account: group._id })
+    await MemberPayment.deleteMany({ group: group._id })
   }
   await group.deleteOne()
 }

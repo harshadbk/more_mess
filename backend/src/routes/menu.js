@@ -1,7 +1,16 @@
 import { Router } from 'express'
 import Dish from '../models/Dish.js'
 import { adminOnly, loggedIn } from '../auth.js'
-import { dropExpiredDishes, getSettings, isDate, lockedMeals, syncMenuDay, today } from '../tiffins.js'
+import {
+  dropExpiredDishes,
+  getSettings,
+  isDate,
+  lockedMeals,
+  nonVegDay,
+  servedDishes,
+  syncMenuDay,
+  today,
+} from '../tiffins.js'
 
 const router = Router()
 
@@ -14,6 +23,13 @@ function dishFields(body) {
     throw Object.assign(new Error('Photo must be an image under 300 KB.'), { status: 400 })
   }
   return { meal, name, food, price: Number(price) || 0, description, image }
+}
+
+// Non-veg is only cooked on Sundays and Wednesdays.
+function checkFood(date, food) {
+  if (food === 'non-veg' && !nonVegDay(date)) {
+    throw Object.assign(new Error('Non-veg is only served on Sundays and Wednesdays.'), { status: 400 })
+  }
 }
 
 // Dishes can't be added to a meal whose cut-off has passed (they would be deleted right away).
@@ -30,7 +46,14 @@ router.get('/', async (req, res) => {
   await dropExpiredDishes()
   const [dishes, settings] = await Promise.all([Dish.find({ date }).sort({ createdAt: 1 }), getSettings()])
   // meal prices are public too; `locked` = meals whose time is over on that day
-  res.json({ date, dishes, prices: settings.prices, locked: lockedMeals(date, settings.cutoffs) })
+  res.json({
+    date,
+    dishes: servedDishes(dishes, date), // non-veg never shows on a veg-only day
+    prices: settings.prices,
+    locked: lockedMeals(date, settings.cutoffs),
+    cutoffs: settings.cutoffs, // last time to order each meal ('HH:MM', India time)
+    nonVegDay: nonVegDay(date),
+  })
 })
 
 // Everything below is for the admin only.
@@ -43,6 +66,7 @@ router.post('/', async (req, res) => {
   if (req.body.meal === 'special' && !(Number(req.body.price) > 0)) {
     return res.status(400).json({ error: 'Specials need a price.' })
   }
+  checkFood(req.body.date, req.body.food)
   await checkOpen(req.body.date, req.body.meal)
   const dish = await Dish.create({ date: req.body.date, ...dishFields(req.body) })
   await syncMenuDay(dish.date) // orders for that day pick up the new option
@@ -53,6 +77,7 @@ router.post('/', async (req, res) => {
 router.put('/:id', async (req, res) => {
   const old = await Dish.findById(req.params.id)
   if (!old) return res.status(404).json({ error: 'Dish not found.' })
+  checkFood(old.date, req.body.food)
   await checkOpen(old.date, req.body.meal ?? old.meal)
   const dish = await Dish.findByIdAndUpdate(req.params.id, dishFields(req.body), { new: true, runValidators: true })
   if (!dish) return res.status(404).json({ error: 'Dish not found.' })
@@ -71,7 +96,10 @@ router.post('/copy', async (req, res) => {
   const { from, to } = req.body
   if (!isDate(from) || !isDate(to) || from === to) return res.status(400).json({ error: 'Pick two different days.' })
   const closed = lockedMeals(to, (await getSettings()).cutoffs)
-  const dishes = (await Dish.find({ date: from })).filter((d) => !closed.includes(d.meal))
+  // Non-veg dishes are left out when copying to a veg-only day.
+  const dishes = (await Dish.find({ date: from })).filter(
+    (d) => !closed.includes(d.meal) && (d.food !== 'non-veg' || nonVegDay(to)),
+  )
   if (!dishes.length) return res.status(404).json({ error: 'That day has no dishes to copy.' })
   await Dish.insertMany(
     dishes.map(({ meal, name, food, price, description, image }) => ({

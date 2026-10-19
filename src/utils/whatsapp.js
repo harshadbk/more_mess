@@ -28,7 +28,7 @@ export const messages = {
       `Date: ${date}`,
       `Name: ${name}`,
       `Phone: ${phone}`,
-      `Meal: ${meal}`,
+      `Meals: ${meal}`,
       `Number of tiffins: ${count}`,
       `Food: ${food}`,
       `Pickup / delivery: ${delivery}`,

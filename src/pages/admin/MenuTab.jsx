@@ -16,8 +16,12 @@ const sections = [
 
 const emptyDish = { meal: 'lunch', name: '', food: 'veg', price: '', description: '', image: '' }
 
+// Non-veg is only cooked on Sundays and Wednesdays (same rule as the backend).
+const isNonVegDay = (date) => [0, 3].includes(new Date(`${date}T00:00:00Z`).getUTCDay())
+
 /** Add or edit one dish. `locked` = meals whose time is already over on `date`. */
 function DishForm({ date, locked, editing, onSaved, onCancel }) {
+  const nonVegDay = isNonVegDay(date)
   const notify = useNotice()
   const [values, setValues] = useState(editing ?? emptyDish)
   const [error, setError] = useState('')
@@ -31,6 +35,11 @@ function DishForm({ date, locked, editing, onSaved, onCancel }) {
   useEffect(() => {
     if (locked.includes(values.meal) && open.length) setValues((v) => ({ ...v, meal: open[0].value }))
   }, [locked]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Moving to a veg-only day switches the form back to veg.
+  useEffect(() => {
+    if (!nonVegDay) setValues((v) => (v.food === 'non-veg' ? { ...v, food: 'veg' } : v))
+  }, [nonVegDay, editing])
 
   const set = (key) => (value) => setValues((v) => ({ ...v, [key]: value }))
 
@@ -50,6 +59,7 @@ function DishForm({ date, locked, editing, onSaved, onCancel }) {
     if (!values.name.trim()) return setError('Enter the dish name.')
     if (values.meal === 'special' && !(Number(values.price) > 0)) return setError('Specials need a price.')
     if (locked.includes(values.meal)) return setError('That meal time is over for this day. Add it for tomorrow instead.')
+    if (values.food === 'non-veg' && !nonVegDay) return setError('Non-veg is only served on Sundays and Wednesdays.')
     setBusy(true)
     setError('')
     try {
@@ -76,7 +86,9 @@ function DishForm({ date, locked, editing, onSaved, onCancel }) {
           </button>
         )}
       </div>
-      <p className="text-sm text-muted">For {formatDate(date)}</p>
+      <p className="text-sm text-muted">
+        For {formatDate(date)} · {nonVegDay ? 'veg and non-veg day' : 'veg only'}. Customers pick one option per meal.
+      </p>
       <FormError message={error} />
       <ChoiceGroup
         label="Meal"
@@ -95,20 +107,24 @@ function DishForm({ date, locked, editing, onSaved, onCancel }) {
         value={values.name}
         onChange={(e) => set('name')(e.target.value)}
       />
-      <div className="grid grid-cols-2 gap-3">
-        {['veg', 'non-veg'].map((food) => (
-          <button
-            key={food}
-            type="button"
-            aria-pressed={values.food === food}
-            onClick={() => set('food')(food)}
-            className={`rounded-xl border px-4 py-2.5 font-semibold ${
-              values.food === food ? 'border-forest bg-forest/5 text-forest' : 'border-line bg-white'
-            }`}
-          >
-            {food === 'veg' ? 'Veg' : 'Non-veg'}
-          </button>
-        ))}
+      <div>
+        <div className="grid grid-cols-2 gap-3">
+          {['veg', 'non-veg'].map((food) => (
+            <button
+              key={food}
+              type="button"
+              aria-pressed={values.food === food}
+              disabled={food === 'non-veg' && !nonVegDay}
+              onClick={() => set('food')(food)}
+              className={`rounded-xl border px-4 py-2.5 font-semibold disabled:opacity-40 ${
+                values.food === food ? 'border-forest bg-forest/5 text-forest' : 'border-line bg-white'
+              }`}
+            >
+              {food === 'veg' ? 'Veg' : 'Non-veg'}
+            </button>
+          ))}
+        </div>
+        {!nonVegDay && <p className="mt-1.5 text-xs text-muted">Non-veg only on Sundays and Wednesdays.</p>}
       </div>
       <Field
         label={values.meal === 'special' ? 'Price (₹) *' : 'Price (₹, optional)'}

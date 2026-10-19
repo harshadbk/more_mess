@@ -10,19 +10,21 @@ router.use(loggedIn)
 
 const isAdmin = (user) => user.role === 'admin'
 const myGroup = (user) => Group.findOne({ members: user._id })
+// In a group only the owner pays the mess, so only they see and handle the group's payments.
+const myOwnGroup = (user) => Group.findOne({ owner: user._id })
 
 // Is this user on the customer side of the payment (the person, or a member of the group)?
 async function isPayer(user, payment) {
   if (payment.user?.equals(user._id)) return true
-  const group = payment.group && (await myGroup(user))
+  const group = payment.group && (await myOwnGroup(user))
   return Boolean(group && group._id.equals(payment.group))
 }
 
-// Admin sees every payment; a customer sees their own and their group's.
+// Admin sees every payment; a customer sees their own, and a group's owner the group's too.
 router.get('/', async (req, res) => {
   let filter = {}
   if (!isAdmin(req.user)) {
-    const group = await myGroup(req.user)
+    const group = await myOwnGroup(req.user)
     filter = { $or: [{ user: req.user._id }, ...(group ? [{ group: group._id }] : [])] }
   }
   res.json({ payments: await Payment.find(filter).sort({ paidOn: -1, createdAt: -1 }) })
@@ -30,7 +32,7 @@ router.get('/', async (req, res) => {
 
 // Record a payment.
 // Admin: { amount, userId or groupId, paidOn?, note? }
-// Customer: { amount, forGroup?: true, paidOn?, note? } (for themselves, or for their group)
+// Customer: { amount, forGroup?: true, paidOn?, note? } (for themselves, or the group's owner for their group)
 router.post('/', async (req, res) => {
   const { amount, paidOn, note, userId, groupId, forGroup } = req.body
   if (!(Number(amount) > 0)) return res.status(400).json({ error: 'Enter the amount paid.' })
@@ -39,10 +41,13 @@ router.post('/', async (req, res) => {
   if (isAdmin(req.user)) {
     payer = groupId ? { group: await Group.findById(groupId) } : { user: await User.findById(userId) }
   } else {
-    payer = forGroup ? { group: await myGroup(req.user) } : { user: req.user }
+    payer = forGroup ? { group: await myOwnGroup(req.user) } : { user: req.user }
   }
   const who = payer.group ?? payer.user
-  if (!who) return res.status(400).json({ error: 'Choose who paid.' })
+  if (!who) {
+    const error = forGroup ? "Only the group's owner pays the mess for the group." : 'Choose who paid.'
+    return res.status(400).json({ error })
+  }
 
   const payment = await Payment.create({
     user: payer.user?._id,

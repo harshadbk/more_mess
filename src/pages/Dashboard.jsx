@@ -4,6 +4,7 @@ import AccountLayout from '../components/account/AccountLayout.jsx'
 import ErrorBoundary from '../components/ErrorBoundary.jsx'
 import Field, { ChoiceGroup, FormError, MultiChoice } from '../components/account/Field.jsx'
 import GroupCard from '../components/account/GroupCard.jsx'
+import GroupLedger from '../components/account/GroupLedger.jsx'
 import PaymentList, { agreedTotal } from '../components/account/PaymentList.jsx'
 import AccountSummary from '../components/account/AccountSummary.jsx'
 import OrderCart from '../components/account/OrderCart.jsx'
@@ -283,11 +284,11 @@ function RecordPaymentForm({ group, onAdded }) {
 }
 
 function MyHeatmap({ refreshKey, groupName }) {
-  const [days, setDays] = useState(null)
+  const [history, setHistory] = useState(null) // { days, since }
   useEffect(() => {
     api('/orders/history?days=182')
-      .then(({ days }) => setDays(days))
-      .catch(() => setDays([]))
+      .then(setHistory)
+      .catch(() => setHistory({ days: [], since: '' }))
   }, [refreshKey])
   return (
     <section className="card p-6" aria-labelledby="history-title">
@@ -296,10 +297,15 @@ function MyHeatmap({ refreshKey, groupName }) {
         My tiffin calendar
       </h2>
       <p className="mt-1 mb-4 text-sm text-muted">
-        Last 6 months{groupName ? `: your own tiffins plus group “${groupName}”'s` : ''}. Darker days = more tiffins.
-        Hover a day for details.
+        Last 6 months
+        {groupName ? `: your tiffins, including the meals you were ticked for in “${groupName}”` : ''}. Darker = more tiffins. Tap or hover a day
+        for the meal-by-meal count.
       </p>
-      {days ? <Heatmap days={days} showAmount /> : <p className="text-muted">Loading…</p>}
+      {history ? (
+        <Heatmap days={history.days} since={history.since} showAmount />
+      ) : (
+        <p className="text-muted">Loading…</p>
+      )}
     </section>
   )
 }
@@ -332,6 +338,9 @@ export default function Dashboard() {
   }
 
   const pending = payments?.filter((p) => !p.rejected && !p.customerConfirmed).length ?? 0
+  // In a group only the owner pays the mess; other members pay the owner (see GroupLedger).
+  const isOwner = Boolean(group && group.owner?._id === user._id)
+  const showMessPayments = !group || isOwner || Boolean(payments?.length)
 
   return (
     <AccountLayout wide>
@@ -354,6 +363,13 @@ export default function Dashboard() {
           <ErrorBoundary name="Your order">
             <OrderCart planKey={`${user.meals.join()}|${refreshKey}`} onSaved={refresh} />
           </ErrorBoundary>
+          {group && (
+            <div className="mt-8">
+              <ErrorBoundary name="Group payments">
+                <GroupLedger group={group} refreshKey={refreshKey} onChange={refresh} />
+              </ErrorBoundary>
+            </div>
+          )}
         </div>
 
         <aside className="space-y-8 lg:col-start-2 lg:row-span-2 lg:row-start-1">
@@ -378,35 +394,40 @@ export default function Dashboard() {
             <MyHeatmap refreshKey={refreshKey} groupName={group?.name} />
           </ErrorBoundary>
 
-          <section aria-labelledby="payments-title">
-            <div className="flex flex-wrap items-end justify-between gap-3">
-              <h2 id="payments-title" className="flex items-center gap-2 text-2xl font-extrabold">
-                <Wallet className="size-6 text-fresh" aria-hidden="true" />
-                Payments
-              </h2>
-              {payments && (
-                <p className="text-sm text-muted">
-                  Agreed total: <strong className="text-forest">{rupees(agreedTotal(payments))}</strong>
-                  {pending > 0 && <span className="ml-2 font-semibold text-saffron">{pending} to confirm</span>}
-                </p>
-              )}
-            </div>
-            <p className="mt-1 text-sm text-muted">A payment counts once both you and Sai Mess have confirmed it.</p>
-            <div className="mt-4 space-y-5">
-              <RecordPaymentForm group={group} onAdded={(p) => setPayments((list) => [p, ...(list ?? [])])} />
-              {payments && (
-                <PaymentList
-                  payments={payments}
-                  side="customer"
-                  showPayer={Boolean(group)}
-                  onChange={(p) => {
-                    setPayments((list) => list.map((x) => (x._id === p._id ? p : x)))
-                    refresh()
-                  }}
+          {showMessPayments && (
+            <section aria-labelledby="payments-title">
+              <div className="flex flex-wrap items-end justify-between gap-3">
+                <h2 id="payments-title" className="flex items-center gap-2 text-2xl font-extrabold">
+                  <Wallet className="size-6 text-fresh" aria-hidden="true" />
+                  Payments
+                </h2>
+                {payments && (
+                  <p className="text-sm text-muted">
+                    Agreed total: <strong className="text-forest">{rupees(agreedTotal(payments))}</strong>
+                    {pending > 0 && <span className="ml-2 font-semibold text-saffron">{pending} to confirm</span>}
+                  </p>
+                )}
+              </div>
+              <p className="mt-1 text-sm text-muted">A payment counts once both you and Sai Mess have confirmed it.</p>
+              <div className="mt-4 space-y-5">
+                <RecordPaymentForm
+                  group={isOwner ? group : null}
+                  onAdded={(p) => setPayments((list) => [p, ...(list ?? [])])}
                 />
-              )}
-            </div>
-          </section>
+                {payments && (
+                  <PaymentList
+                    payments={payments}
+                    side="customer"
+                    showPayer={Boolean(group)}
+                    onChange={(p) => {
+                      setPayments((list) => list.map((x) => (x._id === p._id ? p : x)))
+                      refresh()
+                    }}
+                  />
+                )}
+              </div>
+            </section>
+          )}
         </div>
       </div>
     </AccountLayout>

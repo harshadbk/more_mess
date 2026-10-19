@@ -3,7 +3,8 @@ import Group from '../models/Group.js'
 import User from '../models/User.js'
 import { loggedIn } from '../auth.js'
 import { cleanPhone } from './auth.js'
-import { dropOwnFutureOrders, removeGroup } from '../tiffins.js'
+import MemberPayment from '../models/MemberPayment.js'
+import { dropMemberFromGroupOrders, dropOwnFutureOrders, groupLedger, isDate, removeGroup, today } from '../tiffins.js'
 
 const router = Router()
 router.use(loggedIn) // every group route needs a logged-in user
@@ -85,7 +86,60 @@ router.delete('/:id/members/:userId', async (req, res) => {
 
   group.members.pull(req.params.userId)
   await group.save()
+  await dropMemberFromGroupOrders(group._id, req.params.userId) // they are not on the group's later orders
   res.json(leaving ? { left: true } : { group: await findGroup(group._id) })
+})
+
+/* -------------------------------------------- Money between members and the owner */
+
+// The month's book: what each member ate, their share, what they paid the owner, what they still owe.
+// The owner (and admin) sees everyone; a member sees only their own row and payments.
+router.get('/:id/ledger', async (req, res) => {
+  const group = await Group.findById(req.params.id)
+  if (!group) return res.status(404).json({ error: 'Group not found.' })
+  const isMember = group.members.some((m) => m.equals(req.user._id))
+  if (!isMember && !isOwnerOrAdmin(group, req.user)) return res.status(403).json({ error: 'Not your group.' })
+
+  const month = /^\d{4}-\d{2}$/.test(req.query.month) ? req.query.month : today().slice(0, 7)
+  const ledger = await groupLedger(group, month)
+  if (isOwnerOrAdmin(group, req.user)) return res.json({ ...ledger, canEdit: true })
+  const me = String(req.user._id)
+  res.json({
+    month,
+    canEdit: false,
+    members: ledger.members.filter((m) => m._id === me),
+    entries: ledger.entries.filter((p) => String(p.member) === me),
+  })
+})
+
+// Owner records that a member paid them: { member, amount, paidOn?, note? }
+router.post('/:id/ledger', async (req, res) => {
+  const group = await Group.findById(req.params.id)
+  if (!group) return res.status(404).json({ error: 'Group not found.' })
+  if (!isOwnerOrAdmin(group, req.user)) return res.status(403).json({ error: 'Only the owner can record this.' })
+  const { member, amount, paidOn, note } = req.body
+  if (!group.members.some((m) => String(m) === String(member))) {
+    return res.status(400).json({ error: 'Pick a member of the group.' })
+  }
+  if (!(Number(amount) > 0)) return res.status(400).json({ error: 'Enter the amount paid.' })
+  if (paidOn && (!isDate(paidOn) || paidOn > today())) return res.status(400).json({ error: 'Pick a day up to today.' })
+  const entry = await MemberPayment.create({
+    group: group._id,
+    member,
+    amount: Number(amount),
+    paidOn: paidOn || today(),
+    note,
+  })
+  res.status(201).json({ entry })
+})
+
+// Owner removes a wrong entry.
+router.delete('/:id/ledger/:entryId', async (req, res) => {
+  const group = await Group.findById(req.params.id)
+  if (!group) return res.status(404).json({ error: 'Group not found.' })
+  if (!isOwnerOrAdmin(group, req.user)) return res.status(403).json({ error: 'Only the owner can remove this.' })
+  await MemberPayment.deleteOne({ _id: req.params.entryId, group: group._id })
+  res.json({ deleted: true })
 })
 
 // Owner deletes the group

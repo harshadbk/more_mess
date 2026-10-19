@@ -2,7 +2,18 @@ import { Router } from 'express'
 import Group from '../models/Group.js'
 import Order from '../models/Order.js'
 import { loggedIn } from '../auth.js'
-import { accountSummary, addDays, catchUp, dayFor, isDate, perDay, saveDay, today } from '../tiffins.js'
+import {
+  accountSummary,
+  addDays,
+  catchUp,
+  dayFor,
+  isDate,
+  memberDay,
+  perDay,
+  saveDay,
+  startOf,
+  today,
+} from '../tiffins.js'
 
 const router = Router()
 router.use(loggedIn)
@@ -25,7 +36,7 @@ router.get('/account', async (req, res) => {
   res.json(await accountSummary(req.user))
 })
 
-// Tiffins per day for my heatmap (my own orders + my group's), default last 26 weeks.
+// Tiffins per day for my heatmap (my own orders + what I ate in my group), default last 26 weeks.
 router.get('/history', async (req, res) => {
   await catchUp()
   const days = Math.min(Number(req.query.days) || 182, 400)
@@ -34,7 +45,9 @@ router.get('/history', async (req, res) => {
     account: { $in: [req.user._id, ...(group ? [group._id] : [])] },
     date: { $gte: addDays(today(), 1 - days), $lte: today() },
   })
-  res.json({ days: perDay(orders) })
+  // `since` = when their tiffins started, so the calendar doesn't count days before they joined.
+  const mine = orders.map((o) => (o.kind === 'group' ? memberDay(o, req.user._id) : o))
+  res.json({ days: perDay(mine), since: startOf(req.user) })
 })
 
 export default router

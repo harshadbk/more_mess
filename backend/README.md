@@ -13,7 +13,7 @@ npm run dev      # starts http://localhost:5000 and restarts when you save a fil
 Settings live in `.env` (copy `.env.example` to start). `index.js` loads it automatically.
 
 **Admin account:** set `ADMIN_EMAIL` and `ADMIN_PASSWORD` (plus `ADMIN_NAME`, `ADMIN_PHONE`) in `.env`.
-The server creates that admin when it starts. To change the admin password, edit `ADMIN_PASSWORD` and restart.
+The admin is read from `.env` only and is never saved in the database. To change the admin password, edit `ADMIN_PASSWORD` and restart.
 
 ## Files
 

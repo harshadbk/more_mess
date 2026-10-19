@@ -13,7 +13,27 @@ function Card({ label, value, note, tone = 'text-forest' }) {
   )
 }
 
-/** Days taken, tiffins, charges, paid and pending. `refreshKey` reloads it after changes. */
+// Days taken, tiffins, bill, paid and pending for one summary.
+function Cards({ s, billLabel, paidNote, pendingLabel = 'Pending' }) {
+  return (
+    <div className="grid grid-cols-2 gap-3 lg:grid-cols-5 [&>*:last-child]:col-span-2 lg:[&>*:last-child]:col-span-1">
+      <Card label="Days taken" value={s.daysTaken} />
+      <Card label="Tiffins" value={s.tiffins} note={s.specials ? `+ ${s.specials} specials` : null} />
+      <Card label={billLabel} value={rupees(s.charges)} />
+      <Card label="Paid" value={rupees(s.paid)} note={paidNote} />
+      <Card
+        label={s.pending < 0 ? 'Advance' : pendingLabel}
+        value={rupees(Math.abs(s.pending))}
+        tone={s.pending > 0 ? 'text-[#b4442a]' : 'text-fresh'}
+      />
+    </div>
+  )
+}
+
+/**
+ * Days taken, tiffins, bill, paid and pending. `refreshKey` reloads it after changes.
+ * A group's owner sees the whole group's bill with the mess; other members see their own share.
+ */
 export default function AccountSummary({ refreshKey }) {
   const [account, setAccount] = useState(null)
   const [error, setError] = useState('')
@@ -28,30 +48,33 @@ export default function AccountSummary({ refreshKey }) {
   if (!account) return <p className="text-muted">Loading your account…</p>
 
   const { me, group } = account
-  // In a group the group pays together: its bill is the main one. "me" = my own bill (eating alone).
-  const main = group ?? me
-  const pending = main.pending
   const ownBill = group && (me.charges > 0 || me.paid > 0)
 
   return (
     <section aria-label="My account" className="space-y-3">
-      {group && (
-        <p className="flex items-center gap-2 text-sm font-semibold text-forest">
-          <Users className="size-4" aria-hidden="true" />
-          Group “{group.name}” · {group.people} members · one shared bill
-        </p>
+      {group?.isOwner ? (
+        <>
+          <p className="flex items-center gap-2 text-sm font-semibold text-forest">
+            <Users className="size-4" aria-hidden="true" />
+            Group “{group.name}” · {group.people} members · whole group’s bill with Sai Mess (you pay it)
+          </p>
+          <Cards s={group} billLabel="Group bill" paidNote="agreed by both sides" />
+          <p className="text-sm text-muted">
+            Your own share: {group.myShare.tiffins} tiffins, {rupees(group.myShare.charges)}. See what each member owes
+            you in “Group payments”.
+          </p>
+        </>
+      ) : group ? (
+        <>
+          <p className="flex items-center gap-2 text-sm font-semibold text-forest">
+            <Users className="size-4" aria-hidden="true" />
+            Group “{group.name}” · your share · you pay the group’s owner
+          </p>
+          <Cards s={group.myShare} billLabel="My share" paidNote="to the group’s owner" pendingLabel="Still to pay" />
+        </>
+      ) : (
+        <Cards s={me} billLabel="My bill" paidNote="agreed by both sides" />
       )}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5 [&>*:last-child]:col-span-2 lg:[&>*:last-child]:col-span-1">
-        <Card label="Days taken" value={main.daysTaken} />
-        <Card label="Tiffins" value={main.tiffins} note={main.specials ? `+ ${main.specials} specials` : null} />
-        <Card label={group ? 'Group bill' : 'My bill'} value={rupees(main.charges)} />
-        <Card label="Paid" value={rupees(main.paid)} note="agreed by both sides" />
-        <Card
-          label={pending < 0 ? 'Advance' : 'Pending'}
-          value={rupees(Math.abs(pending))}
-          tone={pending > 0 ? 'text-[#b4442a]' : 'text-fresh'}
-        />
-      </div>
       {ownBill && (
         <p className="text-sm text-muted">
           My own bill (from before I joined the group): {me.tiffins} tiffins, {rupees(me.charges)}, paid{' '}

@@ -1,21 +1,33 @@
-import { useRef, useState } from 'react'
-import { ArrowLeft, Bike, Clock, MessageCircle, Store } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { ArrowLeft, Bike, Clock, Coffee, Lock, MessageCircle, Moon, Store, Sun } from 'lucide-react'
 import SectionHeading from './SectionHeading.jsx'
 import Reveal from './Reveal.jsx'
 import Field, { ChoiceGroup } from './account/Field.jsx'
+import DishItem from './account/DishItem.jsx'
 import { businessConfig } from '../data/businessConfig.js'
-import { formatIndianNumber, hasWhatsApp, mealTimingList, normalizeIndianNumber } from '../utils/business.js'
+import { api } from '../lib/api.js'
+import { todayIST } from '../data/accountOptions.js'
+import { formatIndianNumber, hasWhatsApp, normalizeIndianNumber } from '../utils/business.js'
 import { buildWhatsAppUrl, messages } from '../utils/whatsapp.js'
 
-const mealChoices = [
-  { value: 'Lunch (day)', label: 'Lunch', hint: 'Day tiffin' },
-  { value: 'Dinner (night)', label: 'Dinner', hint: 'Night tiffin' },
-  { value: 'Lunch and dinner', label: 'Both', hint: 'Day and night' },
+const MEALS = [
+  { id: 'breakfast', label: 'Breakfast', icon: Coffee },
+  { id: 'lunch', label: 'Lunch', icon: Sun },
+  { id: 'dinner', label: 'Dinner', icon: Moon },
 ]
 const foodChoices = [
   { value: 'Veg', label: 'Veg' },
   { value: 'Non-veg', label: 'Non-veg' },
 ]
+
+// Non-veg is only served on Sundays and Wednesdays (same rule as the backend).
+const nonVegToday = () => [0, 3].includes(new Date(`${todayIST()}T00:00:00Z`).getUTCDay())
+const nowIST = () => new Date().toLocaleTimeString('en-GB', { timeZone: 'Asia/Kolkata', hour12: false }).slice(0, 5)
+// '07:00' -> '7:00 AM'
+const clock = (hhmm) => {
+  const [h, m] = hhmm.split(':').map(Number)
+  return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`
+}
 const deliveryChoices = [
   { value: 'pickup', label: 'I will pick up', hint: 'Come to the mess' },
   { value: 'delivery', label: 'Deliver to me', hint: 'If available in your area' },
@@ -24,7 +36,8 @@ const deliveryChoices = [
 const emptyOrder = {
   name: '',
   phone: '',
-  meal: 'Lunch (day)',
+  meals: [], // 'breakfast' | 'lunch' | 'dinner'
+  choice: {}, // meal -> dish id picked from today's menu
   count: '1',
   food: 'Veg',
   delivery: 'pickup',
@@ -34,6 +47,7 @@ const emptyOrder = {
 
 function validate(v) {
   const errors = {}
+  if (!v.meals.length) errors.meals = 'Pick at least one meal.'
   if (v.name.trim().length < 2) errors.name = 'Please enter your name.'
   if (!normalizeIndianNumber(v.phone)) errors.phone = 'Enter a valid 10-digit mobile number.'
   const count = Number(v.count)
@@ -50,6 +64,33 @@ export default function TodayOrder() {
   const [sent, setSent] = useState(false) // true after they open WhatsApp to send
   const formRef = useRef(null)
   const previewRef = useRef(null)
+  const [menu, setMenu] = useState(null) // today's menu, cut-off times and closed meals (null = not loaded)
+  const [now, setNow] = useState(nowIST())
+
+  useEffect(() => {
+    api('/menu')
+      .then(setMenu)
+      .catch(() => setMenu(null)) // server unreachable: the form still works, without menu options
+    const timer = setInterval(() => setNow(nowIST()), 60 * 1000) // meals close while the page is open
+    return () => clearInterval(timer)
+  }, [])
+
+  // A meal can't be ordered after its cut-off time today.
+  const closed = (meal) => Boolean(menu?.locked?.includes(meal) || (menu?.cutoffs && now >= menu.cutoffs[meal]))
+  // Closing meals drop out of the order.
+  useEffect(() => {
+    setValues((v) => (v.meals.some(closed) ? { ...v, meals: v.meals.filter((m) => !closed(m)) } : v))
+  }, [now, menu]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const nonVegDay = menu?.nonVegDay ?? nonVegToday()
+  const food = nonVegDay ? values.food : 'Veg'
+  // Today's options for a meal, of the chosen kind (all of them if there are none of that kind).
+  const optionsOf = (meal) => {
+    const all = (menu?.dishes ?? []).filter((d) => d.meal === meal)
+    const kind = all.filter((d) => (d.food === 'non-veg') === (food === 'Non-veg'))
+    return kind.length ? kind : all
+  }
+  const pickedOf = (meal) => optionsOf(meal).find((d) => d._id === values.choice[meal]) ?? optionsOf(meal)[0]
 
   if (!hasWhatsApp) return null
 
@@ -61,20 +102,32 @@ export default function TodayOrder() {
   }
   const onInput = (e) => set(e.target.name)(e.target.value)
 
+  const toggleMeal = (meal) => {
+    set('meals')(values.meals.includes(meal) ? values.meals.filter((m) => m !== meal) : [...values.meals, meal])
+  }
+
   const onSubmit = (e) => {
     e.preventDefault()
     const found = validate(values)
     setErrors(found)
-    const first = ['name', 'phone', 'count', 'address'].find((f) => found[f])
-    if (first) return formRef.current?.elements[first]?.focus()
+    const first = ['name', 'phone', 'meals', 'count', 'address'].find((f) => found[f])
+    if (first) {
+      const field = formRef.current?.elements[first] // the meal checkboxes come back as a list
+      return (field?.focus ? field : field?.[0])?.focus()
+    }
+
+    // e.g. "Breakfast (Poha), Lunch (Veg thali)"
+    const meal = MEALS.filter((m) => values.meals.includes(m.id))
+      .map((m) => (pickedOf(m.id) ? `${m.label} (${pickedOf(m.id).name})` : m.label))
+      .join(', ')
 
     const text = messages.todayOrder({
       date: today,
       name: values.name.trim(),
       phone: formatIndianNumber(normalizeIndianNumber(values.phone)),
-      meal: values.meal,
+      meal,
       count: Number(values.count),
-      food: values.food,
+      food,
       delivery: values.delivery === 'delivery' ? 'Please deliver' : 'I will pick up from the mess',
       address: values.delivery === 'delivery' ? values.address.trim() : '',
       note: values.note.trim(),
@@ -172,13 +225,93 @@ export default function TodayOrder() {
                     error={errors.phone}
                   />
                 </div>
-                <ChoiceGroup
-                  label="Which meal?"
-                  name="meal"
-                  options={mealChoices}
-                  value={values.meal}
-                  onChange={set('meal')}
-                />
+                <fieldset>
+                  <legend className="text-sm font-semibold text-charcoal">Which meals? *</legend>
+                  <p className="mt-0.5 text-sm text-muted">
+                    Today’s menu from {businessConfig.name}. Pick one or more meals, and one option for each.
+                  </p>
+                  <div className="mt-2 space-y-2">
+                    {MEALS.map(({ id, label, icon: Icon }) => {
+                      const isClosed = closed(id)
+                      const checked = values.meals.includes(id)
+                      const options = optionsOf(id)
+                      return (
+                        <div
+                          key={id}
+                          className={`rounded-xl border px-4 py-3 ${
+                            checked ? 'border-forest bg-forest/5' : 'border-line bg-white'
+                          } ${isClosed ? 'opacity-60' : ''}`}
+                        >
+                          <label className={`flex items-center gap-3 ${isClosed ? '' : 'cursor-pointer'}`}>
+                            <input
+                              type="checkbox"
+                              name="meals"
+                              checked={checked}
+                              disabled={isClosed}
+                              onChange={() => toggleMeal(id)}
+                              className="size-4 accent-[#174d35]"
+                            />
+                            <Icon className="size-5 text-fresh" aria-hidden="true" />
+                            <span className="flex-1 font-semibold">{label}</span>
+                            {menu?.cutoffs && (
+                              <span
+                                className={`inline-flex items-center gap-1 text-xs font-semibold ${isClosed ? 'text-[#b4442a]' : 'text-muted'}`}
+                              >
+                                {isClosed && <Lock className="size-3.5" aria-hidden="true" />}
+                                {isClosed ? 'Closed for today' : `Order by ${clock(menu.cutoffs[id])}`}
+                              </span>
+                            )}
+                          </label>
+                          {options.length > 0 && (
+                            <ul className="mt-3 space-y-1.5 border-t border-line pt-3">
+                              {options.map((d) => (
+                                <li key={d._id}>
+                                  <label
+                                    className={`flex items-center gap-3 rounded-lg p-1.5 ${isClosed ? '' : 'cursor-pointer hover:bg-forest/5'}`}
+                                  >
+                                    <input
+                                      type="radio"
+                                      name={`today-${id}`}
+                                      checked={checked && pickedOf(id)?._id === d._id}
+                                      disabled={isClosed}
+                                      onChange={() => {
+                                        // Picking a dish also ticks its meal.
+                                        setValues((v) => ({
+                                          ...v,
+                                          choice: { ...v.choice, [id]: d._id },
+                                          meals: v.meals.includes(id) ? v.meals : [...v.meals, id],
+                                        }))
+                                        if (errors.meals) setErrors((err) => ({ ...err, meals: undefined }))
+                                      }}
+                                      className="size-4 shrink-0 accent-[#174d35]"
+                                    />
+                                    <div className="min-w-0 flex-1">
+                                      <DishItem
+                                        dish={{ ...d, price: d.price > 0 ? d.price : menu.prices?.[id] || 0 }}
+                                        showPrice
+                                      />
+                                    </div>
+                                  </label>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                          {menu && options.length === 0 && !isClosed && (
+                            <p className="mt-2 text-sm text-muted">
+                              Today’s {label.toLowerCase()} menu isn’t posted yet.
+                              {checked && ' We’ll tell you on WhatsApp.'}
+                            </p>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                  {errors.meals && (
+                    <p role="alert" className="mt-1.5 text-sm text-[#b4442a]">
+                      {errors.meals}
+                    </p>
+                  )}
+                </fieldset>
                 <div className="grid gap-5 sm:grid-cols-[10rem_1fr]">
                   <Field
                     label="How many tiffins? *"
@@ -193,15 +326,19 @@ export default function TodayOrder() {
                   />
                   <fieldset>
                     <legend className="text-sm font-semibold text-charcoal">Food</legend>
+                    {!nonVegDay && (
+                      <p className="mt-0.5 text-sm text-muted">Veg only today. Non-veg on Sundays and Wednesdays.</p>
+                    )}
                     <div className="mt-2 flex gap-2">
                       {foodChoices.map((f) => (
                         <button
                           key={f.value}
                           type="button"
-                          aria-pressed={values.food === f.value}
+                          aria-pressed={food === f.value}
+                          disabled={f.value === 'Non-veg' && !nonVegDay}
                           onClick={() => set('food')(f.value)}
-                          className={`flex-1 rounded-xl border px-4 py-3 font-semibold transition-colors ${
-                            values.food === f.value
+                          className={`flex-1 rounded-xl border px-4 py-3 font-semibold transition-colors disabled:opacity-40 ${
+                            food === f.value
                               ? 'border-forest bg-forest/5 text-forest'
                               : 'border-line bg-white text-charcoal hover:border-forest/40'
                           }`}
@@ -253,13 +390,25 @@ export default function TodayOrder() {
                 <Clock className="size-5 text-fresh" aria-hidden="true" />
                 Today's timings
               </h3>
-              <ul className="mt-3 space-y-1.5 text-[15px]">
-                {mealTimingList.map((m) => (
-                  <li key={m.id} className="flex justify-between gap-4">
-                    <span className="font-medium">{m.label}</span>
-                    <span className="text-muted">{m.time}</span>
-                  </li>
-                ))}
+              <ul className="mt-3 space-y-2.5 text-[15px]">
+                {MEALS.map(({ id, label }) => {
+                  const time = businessConfig.mealTimings[id]
+                  return (
+                    <li key={id}>
+                      <p className="flex justify-between gap-4">
+                        <span className="font-medium">{label}</span>
+                        <span className="text-right text-muted">{time || (menu?.cutoffs ? '' : '–')}</span>
+                      </p>
+                      {menu?.cutoffs && (
+                        <p className={`text-xs ${closed(id) ? 'font-semibold text-[#b4442a]' : 'text-muted'}`}>
+                          {closed(id)
+                            ? `Orders closed at ${clock(menu.cutoffs[id])}`
+                            : `Order by ${clock(menu.cutoffs[id])}`}
+                        </p>
+                      )}
+                    </li>
+                  )
+                })}
               </ul>
             </div>
             <div className="card p-6 text-[15px] text-muted">

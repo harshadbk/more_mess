@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import bcrypt from 'bcryptjs'
 import User from '../models/User.js'
-import { loggedIn, makeToken } from '../auth.js'
+import { envAdmin, isAdminLogin, loggedIn, makeToken } from '../auth.js'
 import { addDays, today } from '../tiffins.js'
 
 const router = Router()
@@ -18,6 +18,11 @@ router.post('/register', async (req, res) => {
   }
   if (password.length < 8) {
     return res.status(400).json({ error: 'Password must be at least 8 characters.' })
+  }
+  // The admin's email and phone are reserved (the admin logs in from .env, not as a customer).
+  const admin = envAdmin()
+  if (admin && (email.trim().toLowerCase() === admin.email || (admin.phone && cleanPhone(phone) === admin.phone))) {
+    return res.status(400).json({ error: 'That email or phone is already used.' })
   }
 
   const user = await User.create({
@@ -38,6 +43,11 @@ router.post('/register', async (req, res) => {
 // Log in with email or phone number.
 router.post('/login', async (req, res) => {
   const { identifier = '', password = '' } = req.body
+  // The admin is checked against .env first; nothing about the admin is stored in the database.
+  if (isAdminLogin(identifier, password)) {
+    const admin = envAdmin()
+    return res.json({ token: makeToken(admin), user: admin })
+  }
   const user = await User.findOne({
     $or: [{ email: identifier.trim().toLowerCase() }, { phone: cleanPhone(identifier) }],
   })
@@ -53,6 +63,7 @@ router.get('/me', loggedIn, (req, res) => res.json({ user: req.user }))
 
 // Change my plan or details.
 router.patch('/me', loggedIn, async (req, res) => {
+  if (req.user.role === 'admin') return res.status(400).json({ error: "The admin's details are set in .env." })
   for (const field of ['name', 'plan', 'meals', 'foodPreference', 'occupation', 'address']) {
     if (req.body[field] !== undefined) req.user[field] = req.body[field]
   }

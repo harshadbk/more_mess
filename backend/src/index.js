@@ -1,7 +1,7 @@
 import express from 'express'
 import cors from 'cors'
 import { connectDB } from './db.js'
-import { ensureAdmin } from './auth.js'
+import { checkAdmin } from './auth.js'
 import authRoutes from './routes/auth.js'
 import groupRoutes from './routes/groups.js'
 import adminRoutes from './routes/admin.js'
@@ -39,7 +39,7 @@ app.use((err, _req, res, _next) => {
 
 const port = process.env.PORT || 5000
 await connectDB()
-await ensureAdmin() // creates/updates the admin from .env, no separate step needed
+checkAdmin() // the admin comes from .env only; nothing is saved in the database
 await fixOldData()
 await catchUp() // create today's tiffin records
 await syncUpcomingMenus() // match today's and later orders to the posted menu
