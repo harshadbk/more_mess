@@ -1,0 +1,74 @@
+import { Router } from 'express'
+import bcrypt from 'bcryptjs'
+import Order from '../models/Order.js'
+import User from '../models/User.js'
+import { loggedIn, makeToken } from '../auth.js'
+import { addDays, getSettings, orderAmount, planMeals, today } from '../tiffins.js'
+
+const router = Router()
+
+// Keep only the digits and drop a leading +91 / 0, so "+91 98765-43210" becomes "9876543210".
+export const cleanPhone = (phone = '') => String(phone).replace(/\D/g, '').slice(-10)
+
+// Sign up. Always creates a normal user, never an admin.
+router.post('/register', async (req, res) => {
+  const { name, email, phone, password, plan, meals, foodPreference, occupation, address } = req.body
+
+  if (!name || !email || !phone || !password) {
+    return res.status(400).json({ error: 'Name, email, phone and password are required.' })
+  }
+  if (password.length < 8) {
+    return res.status(400).json({ error: 'Password must be at least 8 characters.' })
+  }
+
+  const user = await User.create({
+    name,
+    email,
+    phone: cleanPhone(phone),
+    password: await bcrypt.hash(password, 10),
+    plan,
+    meals,
+    startDate: addDays(today(), 1), // daily tiffins start tomorrow (they can still add today's)
+    foodPreference,
+    occupation,
+    address,
+  })
+  res.status(201).json({ token: makeToken(user), user })
+})
+
+// Log in with email or phone number.
+router.post('/login', async (req, res) => {
+  const { identifier = '', password = '' } = req.body
+  const user = await User.findOne({
+    $or: [{ email: identifier.trim().toLowerCase() }, { phone: cleanPhone(identifier) }],
+  })
+
+  if (!user || !(await bcrypt.compare(password, user.password))) {
+    return res.status(401).json({ error: 'Wrong email/phone or password.' })
+  }
+  res.json({ token: makeToken(user), user })
+})
+
+// Who is logged in?
+router.get('/me', loggedIn, (req, res) => res.json({ user: req.user }))
+
+// Change my plan or details.
+router.patch('/me', loggedIn, async (req, res) => {
+  for (const field of ['name', 'plan', 'meals', 'foodPreference', 'occupation', 'address']) {
+    if (req.body[field] !== undefined) req.user[field] = req.body[field]
+  }
+  await req.user.save()
+
+  // New meals apply from today, except on days the customer already set by hand.
+  if (req.body.meals !== undefined) {
+    const meals = planMeals(req.user)
+    const { prices } = await getSettings()
+    await Order.updateMany(
+      { user: req.user._id, date: { $gte: today() }, custom: false },
+      { ...meals, amount: orderAmount(meals, prices) },
+    )
+  }
+  res.json({ user: req.user })
+})
+
+export default router
