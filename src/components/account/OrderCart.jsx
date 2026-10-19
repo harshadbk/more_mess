@@ -293,7 +293,7 @@ export default function OrderCart({ planKey, onSaved }) {
   const isGroup = account.kind === 'group'
   const people = Math.max(1, account.people) // most tiffins of one meal: 1 for a person, 1 per member for a group
   const maxSpecials = isGroup ? 100 : 10
-  const editable = account.canEdit && date >= todayIST()
+  const editable = account.canEdit && (date >= todayIST() || day.anyDay)
   const items = itemsOf(cart)
   const dirty = JSON.stringify(items) !== JSON.stringify(itemsOf(cartFrom(order.items, groupOf(day))))
   const members = account.members ?? []
@@ -375,6 +375,7 @@ export default function OrderCart({ planKey, onSaved }) {
         </h2>
         <div className="flex flex-wrap items-center gap-2">
           {[
+            ...(day.anyDay ? [{ label: 'Yesterday', value: todayIST(-1) }] : []),
             { label: 'Today', value: todayIST() },
             { label: 'Tomorrow', value: todayIST(1) },
           ].map((d) => (
@@ -393,8 +394,8 @@ export default function OrderCart({ planKey, onSaved }) {
           <input
             type="date"
             aria-label="Pick another day"
-            min={todayIST()}
-            max={addDays(todayIST(), 30)}
+            min={day.anyDay ? undefined : todayIST()}
+            max={day.anyDay ? undefined : addDays(todayIST(), 30)}
             value={date}
             onChange={(e) => e.target.value && setDate(e.target.value)}
             className="rounded-full border border-line bg-white px-3 py-1.5 text-sm"
@@ -442,6 +443,12 @@ export default function OrderCart({ planKey, onSaved }) {
         </span>
       </p>
 
+      {day.anyDay && (
+        <p className="mt-3 rounded-xl border border-dashed border-saffron bg-saffron-soft/40 px-4 py-3 text-sm">
+          <strong>Test mode:</strong> you can add or remove tiffins on any day, past days included, with no cut-off
+          times. Set <code>ALLOW_ANY_DAY=false</code> in <code>backend/.env</code> before going live.
+        </p>
+      )}
       {isGroup && (
         <p className="mt-3 rounded-xl bg-forest/5 px-4 py-3 text-sm">
           {account.canEdit

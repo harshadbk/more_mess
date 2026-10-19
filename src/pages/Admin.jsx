@@ -10,21 +10,25 @@ import { todayIST } from '../data/accountOptions.js'
 import ActivityTab from './admin/ActivityTab.jsx'
 import DuesTab from './admin/DuesTab.jsx'
 import MenuTab from './admin/MenuTab.jsx'
+import MonthTab from './admin/MonthTab.jsx'
 import OrdersTab from './admin/OrdersTab.jsx'
 import PaymentsTab from './admin/PaymentsTab.jsx'
 import PricesTab from './admin/PricesTab.jsx'
+import ReviewsTab from './admin/ReviewsTab.jsx'
 import UsersTab from './admin/UsersTab.jsx'
 import { Stat } from './admin/shared.jsx'
 
 const tabs = [
   { id: 'orders', label: "Today's orders" },
   { id: 'menu', label: 'Menu' },
+  { id: 'month', label: 'Monthly sheet' },
   { id: 'activity', label: 'Heatmap' },
   { id: 'dues', label: 'Dues' },
   { id: 'payments', label: 'Payments' },
   { id: 'users', label: 'Users' },
   { id: 'groups', label: 'Groups' },
   { id: 'prices', label: 'Prices' },
+  { id: 'reviews', label: 'Reviews' },
 ]
 
 export default function Admin() {
@@ -121,9 +125,11 @@ export default function Admin() {
           <FormError message={error} />
           {tab === 'orders' && <OrdersTab date={ordersDate} setDate={setOrdersDate} />}
           {tab === 'menu' && <MenuTab />}
+          {tab === 'month' && <MonthTab />}
           {tab === 'activity' && <ActivityTab onOpenDay={openDay} />}
           {tab === 'dues' && <DuesTab />}
           {tab === 'prices' && <PricesTab />}
+          {tab === 'reviews' && <ReviewsTab />}
           {needsUsers && !error && !(users && groups) && <p className="text-muted">Loading…</p>}
           {tab === 'payments' && users && groups && <PaymentsTab users={users} groups={groups} />}
           {tab === 'users' && users && groups && (

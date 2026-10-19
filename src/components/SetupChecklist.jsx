@@ -4,7 +4,6 @@ import { businessConfig as c } from '../data/businessConfig.js'
 import { highlightedPlanId, mealPlans } from '../data/mealPlans.js'
 import { menuItems } from '../data/menuData.js'
 import { galleryImages } from '../data/galleryData.js'
-import { testimonials } from '../data/testimonials.js'
 import { city, fullAddress, hasPhone, hasWhatsApp, isSet, mapUrl, mealTimingList } from '../utils/business.js'
 
 // Development-only panel listing business details that still need the owner's input.
@@ -22,7 +21,6 @@ const missing = [
   [highlightedPlanId === null, 'Recommended plan (optional, data/mealPlans.js)'],
   [menuItems.some((m) => m.isSample), 'Real menu items (data/menuData.js)'],
   [galleryImages.some((g) => g.isSample), 'Real photos (data/galleryData.js)'],
-  [!testimonials.length, 'Genuine reviews (optional, data/testimonials.js)'],
   [!c.customerCount.verified, 'Confirm customer count to show the badge (optional)'],
 ]
   .filter(([isMissing]) => isMissing)

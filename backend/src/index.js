@@ -8,7 +8,8 @@ import adminRoutes from './routes/admin.js'
 import orderRoutes from './routes/orders.js'
 import paymentRoutes from './routes/payments.js'
 import menuRoutes from './routes/menu.js'
-import { catchUp, dropExpiredDishes, fixOldData, syncUpcomingMenus } from './tiffins.js'
+import reviewRoutes from './routes/reviews.js'
+import { anyDay, catchUp, dropExpiredDishes, fixOldData, syncUpcomingMenus } from './tiffins.js'
 
 const app = express()
 // Website address(es) allowed to call the API, comma-separated in .env
@@ -26,6 +27,7 @@ app.use('/api/admin', adminRoutes)
 app.use('/api/orders', orderRoutes)
 app.use('/api/payments', paymentRoutes)
 app.use('/api/menu', menuRoutes)
+app.use('/api/reviews', reviewRoutes)
 
 // Any error thrown in a route ends up here.
 app.use((err, _req, res, _next) => {
@@ -40,6 +42,7 @@ app.use((err, _req, res, _next) => {
 const port = process.env.PORT || 5000
 await connectDB()
 checkAdmin() // the admin comes from .env only; nothing is saved in the database
+if (anyDay()) console.log('TEST MODE (ALLOW_ANY_DAY=true): orders can be changed on any day. Turn it off before going live.')
 await fixOldData()
 await catchUp() // create today's tiffin records
 await syncUpcomingMenus() // match today's and later orders to the posted menu

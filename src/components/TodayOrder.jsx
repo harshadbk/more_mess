@@ -76,7 +76,9 @@ export default function TodayOrder() {
   }, [])
 
   // A meal can't be ordered after its cut-off time today.
-  const closed = (meal) => Boolean(menu?.locked?.includes(meal) || (menu?.cutoffs && now >= menu.cutoffs[meal]))
+  // (Test mode on the server: nothing closes.)
+  const closed = (meal) =>
+    !menu?.anyDay && Boolean(menu?.locked?.includes(meal) || (menu?.cutoffs && now >= menu.cutoffs[meal]))
   // Closing meals drop out of the order.
   useEffect(() => {
     setValues((v) => (v.meals.some(closed) ? { ...v, meals: v.meals.filter((m) => !closed(m)) } : v))

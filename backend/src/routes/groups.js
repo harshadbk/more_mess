@@ -4,7 +4,15 @@ import User from '../models/User.js'
 import { loggedIn } from '../auth.js'
 import { cleanPhone } from './auth.js'
 import MemberPayment from '../models/MemberPayment.js'
-import { dropMemberFromGroupOrders, dropOwnFutureOrders, groupLedger, isDate, removeGroup, today } from '../tiffins.js'
+import {
+  dropMemberFromGroupOrders,
+  dropOwnFutureOrders,
+  groupLedger,
+  isDate,
+  monthSheet,
+  removeGroup,
+  today,
+} from '../tiffins.js'
 
 const router = Router()
 router.use(loggedIn) // every group route needs a logged-in user
@@ -88,6 +96,18 @@ router.delete('/:id/members/:userId', async (req, res) => {
   await group.save()
   await dropMemberFromGroupOrders(group._id, req.params.userId) // they are not on the group's later orders
   res.json(leaving ? { left: true } : { group: await findGroup(group._id) })
+})
+
+// The group's month, day by day: every member's tiffins (from the ticks) and share. ?month=YYYY-MM
+// Every member can see it, so the group can check who ate what and who owes how much.
+router.get('/:id/sheet', async (req, res) => {
+  const group = await Group.findById(req.params.id)
+  if (!group) return res.status(404).json({ error: 'Group not found.' })
+  const isMember = group.members.some((m) => m.equals(req.user._id))
+  if (!isMember && !isOwnerOrAdmin(group, req.user)) return res.status(403).json({ error: 'Not your group.' })
+
+  const month = /^\d{4}-(0[1-9]|1[0-2])$/.test(req.query.month) ? req.query.month : today().slice(0, 7)
+  res.json(await monthSheet(month, group))
 })
 
 /* -------------------------------------------- Money between members and the owner */

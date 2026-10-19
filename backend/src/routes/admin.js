@@ -2,6 +2,7 @@ import { Router } from 'express'
 import Dish from '../models/Dish.js'
 import Group from '../models/Group.js'
 import Order from '../models/Order.js'
+import Review from '../models/Review.js'
 import User from '../models/User.js'
 import { adminOnly, loggedIn } from '../auth.js'
 import {
@@ -12,6 +13,7 @@ import {
   getSettings,
   isDate,
   MEALS,
+  monthSheet,
   perDay,
   removeGroup,
   startOf,
@@ -45,6 +47,7 @@ router.delete('/users/:id', async (req, res) => {
   for (const group of await Group.find({ owner: req.params.id })) await removeGroup(group, group.owner)
   await Group.updateMany({}, { $pull: { members: req.params.id } })
   await Order.deleteMany({ account: req.params.id })
+  await Review.deleteMany({ user: req.params.id })
   await User.findByIdAndDelete(req.params.id)
   res.json({ deleted: true })
 })
@@ -157,6 +160,12 @@ router.get('/history', async (req, res) => {
   const days = Math.min(Number(req.query.days) || 182, 400)
   const orders = await Order.find({ date: { $gte: addDays(today(), 1 - days), $lte: today() } })
   res.json({ days: perDay(orders) })
+})
+
+// The month's register: every customer, what they ate each day, and their bill. ?month=YYYY-MM
+router.get('/month', async (req, res) => {
+  const month = /^\d{4}-(0[1-9]|1[0-2])$/.test(req.query.month) ? req.query.month : today().slice(0, 7)
+  res.json(await monthSheet(month))
 })
 
 /* ----------------------------------------------------------------- Money */

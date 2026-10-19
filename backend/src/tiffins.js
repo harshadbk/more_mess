@@ -39,6 +39,10 @@ export const nonVegDay = (date) => [0, 3].includes(new Date(`${date}T00:00:00Z`)
 // The dishes that can actually be served on `date` (non-veg dishes only on non-veg days).
 export const servedDishes = (dishes, date) => dishes.filter((d) => d.food !== 'non-veg' || nonVegDay(date))
 
+// TESTING ONLY: ALLOW_ANY_DAY=true in .env lets orders (and menus) be changed on any day, past days
+// included, with no cut-off times, and keeps old menus. Turn it off before going live.
+export const anyDay = () => process.env.ALLOW_ANY_DAY === 'true'
+
 const nowTime = () => new Date().toLocaleTimeString('en-GB', { timeZone: 'Asia/Kolkata', hour12: false }).slice(0, 5)
 
 /* -------------------------------------------------------------- Settings */
@@ -49,7 +53,7 @@ export async function getSettings() {
 
 // Meals that can no longer be changed on `date` (past days: all; today: after each cut-off time).
 export function lockedMeals(date, cutoffs) {
-  if (date > today()) return []
+  if (date > today() || anyDay()) return []
   if (date < today()) return [...MEALS, 'special']
   const now = nowTime()
   const locked = MEALS.filter((meal) => now >= cutoffs[meal])
@@ -60,6 +64,7 @@ export function lockedMeals(date, cutoffs) {
 // A menu is only good until each meal's cut-off: dishes from past days and today's closed meals
 // are deleted. Orders keep their own copy of each dish's name and price, so bills don't change.
 export async function dropExpiredDishes() {
+  if (anyDay()) return // testing: keep old menus so past days can still be ordered from them
   const { cutoffs } = await getSettings()
   const date = today()
   await Dish.deleteMany({ $or: [{ date: { $lt: date } }, { date, meal: { $in: lockedMeals(date, cutoffs) } }] })
@@ -217,6 +222,7 @@ export async function dayFor(user, date) {
     startsOn: order.items.length ? null : startsOn,
     dishes,
     nonVegDay: nonVegDay(date),
+    anyDay: anyDay(), // testing mode: past days can be changed too
     prices: settings.prices,
     cutoffs: settings.cutoffs,
     locked: lockedMeals(date, settings.cutoffs),
@@ -228,7 +234,7 @@ export async function dayFor(user, date) {
 // members eating that meal) and gets one tiffin each.
 export async function saveDay(user, date, rawItems = []) {
   if (!isDate(date)) throw fail(400, 'Pick a date.')
-  if (date < today()) throw fail(400, 'You cannot change a past day.')
+  if (date < today() && !anyDay()) throw fail(400, 'You cannot change a past day.')
   const acc = await accountOf(user)
   if (!acc.canEdit) throw fail(403, "Only the group's owner can change the group's order.")
 
@@ -280,7 +286,7 @@ export async function saveDay(user, date, rawItems = []) {
 // and prices are refreshed.
 // Meals past their cut-off are left alone (their dishes may already be deleted).
 export async function syncMenuDay(date) {
-  if (date < today()) return // past bills never change
+  if (date < today() && !anyDay()) return // past bills never change
   const [allDishes, { prices, cutoffs }, orders] = await Promise.all([
     Dish.find({ date }).sort({ createdAt: 1 }),
     getSettings(),
@@ -586,6 +592,91 @@ export async function groupLedger(group, month) {
     .sort((a, b) => b.current - a.current || a.name.localeCompare(b.name))
   const entries = payments.filter((p) => p.paidOn >= from && p.paidOn <= to)
   return { month, members, entries, unassigned: Math.round(unassigned) }
+}
+
+/* ------------------------------------------------------- Monthly sheet */
+
+// The admin's register for a month ('YYYY-MM'): one row per customer with what they ate each day
+// ({ breakfast, lunch, dinner, specials, amount }) and their month's totals and bill. It fills in day by day.
+// Group members get the meals they were ticked for (and their share of the day's specials); a group's
+// older orders without ticks get a row of their own.
+// With `group`, only that group's order and members (the sheet a group's members see).
+export async function monthSheet(month, group = null) {
+  await catchUp()
+  const [y, m] = month.split('-').map(Number)
+  const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate()
+  const dates = Array.from({ length: lastDay }, (_, i) => `${month}-${String(i + 1).padStart(2, '0')}`)
+  const until = anyDay() ? dates.at(-1) : today() // only days that have happened (test mode: all)
+  const [orders, users, groups] = await Promise.all([
+    Order.find({
+      date: { $gte: dates[0], $lte: until < dates.at(-1) ? until : dates.at(-1) },
+      ...(group ? { account: group._id } : {}),
+    }),
+    User.find({ role: 'user' }).sort({ name: 1 }),
+    group ? [group] : Group.find(),
+  ])
+  const groupOf = (id) => groups.find((g) => g.members.some((m) => String(m) === id))
+
+  const rows = new Map()
+  const rowOf = (id, name, extra = {}) => {
+    if (!rows.has(id)) rows.set(id, { _id: id, name, days: {}, ...extra })
+    return rows.get(id)
+  }
+  const cellOf = (row, date) =>
+    (row.days[date] ??= { breakfast: 0, lunch: 0, dinner: 0, specials: 0, amount: 0 })
+  const addItem = (row, date, i, qty = i.qty) => {
+    const cell = cellOf(row, date)
+    if (i.meal === 'special') cell.specials += qty
+    else cell[i.meal] += qty
+  }
+
+  for (const u of users) {
+    if (!u.active || (group && !group.members.some((m) => m.equals(u._id)))) continue
+    const id = String(u._id)
+    rowOf(id, u.name, { phone: u.phone, group: groupOf(id)?.name ?? null })
+  }
+  const userRow = (id) => {
+    const u = users.find((x) => String(x._id) === id)
+    return rowOf(id, u?.name ?? 'Deleted user', { phone: u?.phone ?? '', group: groupOf(id)?.name ?? null })
+  }
+
+  for (const o of orders) {
+    if (o.kind === 'user') {
+      const row = userRow(String(o.account))
+      for (const i of o.items) addItem(row, o.date, i)
+      cellOf(row, o.date).amount += o.amount
+      continue
+    }
+    const group = groups.find((g) => g._id.equals(o.account))
+    const { parts } = splitOrder(o)
+    for (const [id, part] of parts) {
+      const row = userRow(id)
+      for (const i of part.items) addItem(row, o.date, i, 1)
+      cellOf(row, o.date).amount += part.amount
+    }
+    // Lines nobody was ticked for (older orders), and the specials when nobody was ticked.
+    const loose = o.items.filter((i) => (i.meal === 'special' ? !parts.size : !i.members?.length))
+    if (loose.length) {
+      const row = rowOf(`group:${o.account}`, `${group?.name ?? 'Deleted group'} (not ticked)`, {
+        group: group?.name ?? null,
+        unticked: true,
+      })
+      for (const i of loose) addItem(row, o.date, i)
+      cellOf(row, o.date).amount += itemsAmount(loose)
+    }
+  }
+
+  const list = [...rows.values()].map((row) => {
+    const t = { breakfast: 0, lunch: 0, dinner: 0, specials: 0, amount: 0, days: 0 }
+    for (const cell of Object.values(row.days)) {
+      for (const k of ['breakfast', 'lunch', 'dinner', 'specials', 'amount']) t[k] += cell[k]
+      if (cell.breakfast + cell.lunch + cell.dinner > 0) t.days += 1
+    }
+    for (const cell of Object.values(row.days)) cell.amount = Math.round(cell.amount)
+    return { ...row, totals: { ...t, tiffins: t.breakfast + t.lunch + t.dinner, amount: Math.round(t.amount) } }
+  })
+  list.sort((a, b) => (a.group ?? '~').localeCompare(b.group ?? '~') || a.name.localeCompare(b.name))
+  return { month, dates, until, rows: list }
 }
 
 /* ---------------------------------------------------------------- Groups */

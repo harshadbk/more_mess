@@ -9,6 +9,7 @@ import PaymentList, { agreedTotal } from '../components/account/PaymentList.jsx'
 import AccountSummary from '../components/account/AccountSummary.jsx'
 import OrderCart from '../components/account/OrderCart.jsx'
 import Heatmap from '../components/account/Heatmap.jsx'
+import MonthTab from './admin/MonthTab.jsx'
 import { useNotice } from '../components/Notice.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
 import { api } from '../lib/api.js'
@@ -298,8 +299,8 @@ function MyHeatmap({ refreshKey, groupName }) {
       </h2>
       <p className="mt-1 mb-4 text-sm text-muted">
         Last 6 months
-        {groupName ? `: your tiffins, including the meals you were ticked for in “${groupName}”` : ''}. Darker = more tiffins. Tap or hover a day
-        for the meal-by-meal count.
+        {groupName ? `: your tiffins, including the meals you were ticked for in “${groupName}”` : ''}. Darker = more
+        tiffins. Tap or hover a day for the meal-by-meal count.
       </p>
       {history ? (
         <Heatmap days={history.days} since={history.since} showAmount />
@@ -393,6 +394,11 @@ export default function Dashboard() {
           <ErrorBoundary name="Your tiffin calendar">
             <MyHeatmap refreshKey={refreshKey} groupName={group?.name} />
           </ErrorBoundary>
+          {group && (
+            <ErrorBoundary name="Group tiffins">
+              <MonthTab key={refreshKey} group={group} me={user._id} />
+            </ErrorBoundary>
+          )}
 
           {showMessPayments && (
             <section aria-labelledby="payments-title">
