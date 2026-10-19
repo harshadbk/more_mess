@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Download, Printer } from 'lucide-react'
 import { FormError } from '../../components/account/Field.jsx'
 import { api } from '../../lib/api.js'
+import useLiveReload from '../../lib/useLiveReload.js'
 import { rupees, todayIST } from '../../data/accountOptions.js'
 
 // Same greens as the calendar heatmap, light -> dark. Step 0 = nothing that day.
@@ -60,20 +61,29 @@ function downloadCsv(sheet, rows) {
  * totals and bill. It fills in as each day's orders come in.
  * Admin: every customer (default). A group's members: pass `group` to see that group, with each member's share.
  */
-export default function MonthTab({ group = null, me = null }) {
+export default function MonthTab({ group = null, me = null, refreshKey = 0 }) {
   const [month, setMonth] = useState(todayIST().slice(0, 7))
   const [sheet, setSheet] = useState(null)
   const [error, setError] = useState('')
   const [view, setView] = useState('days')
   const [search, setSearch] = useState('')
 
+  const [tick, setTick] = useState(0)
+  useLiveReload(() => setTick((t) => t + 1)) // orders come in all day
+
+  // A new month (or group) blanks the sheet; a refresh after an order keeps the old one until the new one arrives.
+  const shown = useRef(null)
   useEffect(() => {
-    setSheet(null)
+    const what = `${group?._id}|${month}`
+    if (shown.current !== what) {
+      shown.current = what
+      setSheet(null)
+    }
     setError('')
     api(group ? `/groups/${group._id}/sheet?month=${month}` : `/admin/month?month=${month}`)
       .then(setSheet)
       .catch((err) => setError(err.message))
-  }, [month, group])
+  }, [month, group, refreshKey, tick])
   const who = group ? 'Member' : 'Customer'
   const bill = group ? 'Share' : 'Bill'
 
@@ -95,6 +105,9 @@ export default function MonthTab({ group = null, me = null }) {
     }),
     { tiffins: 0, specials: 0, amount: 0, breakfast: 0, lunch: 0, dinner: 0 },
   )
+  // Non-membership (WhatsApp) orders the admin marked paid: their own table, and part of the month's revenue.
+  const guests = sheet?.guests ?? []
+  const guestTotal = guests.reduce((s, g) => s + g.amount, 0)
   const max = Math.max(1, ...rows.flatMap((r) => Object.values(r.days).map(tiffinsOf)))
   const level = (n) => (n <= 0 ? 0 : max <= 4 ? Math.min(4, n) : Math.min(4, Math.ceil((n / max) * 4)))
   const today = todayIST()
@@ -167,12 +180,18 @@ export default function MonthTab({ group = null, me = null }) {
 
       {sheet && (
         <>
-          <dl className="mt-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+          <dl className={`mt-4 grid grid-cols-2 gap-3 text-sm ${group ? 'sm:grid-cols-4' : 'sm:grid-cols-3 lg:grid-cols-6'}`}>
             {[
               [`${who}s`, rows.length],
               ['Tiffins', `${totals.tiffins}`],
               ['B / L / D', `${totals.breakfast} / ${totals.lunch} / ${totals.dinner}`],
-              [`${bill}s`, rupees(totals.amount)],
+              [group ? `${bill}s` : 'Members’ bills', rupees(totals.amount)],
+              ...(group
+                ? []
+                : [
+                    ['Non-membership paid', rupees(guestTotal)],
+                    ['Total revenue', rupees(totals.amount + guestTotal)],
+                  ]),
             ].map(([label, value]) => (
               <div key={label} className="rounded-xl bg-cream-dark/60 px-3 py-2">
                 <dt className="text-xs text-muted">{label}</dt>
@@ -340,6 +359,65 @@ export default function MonthTab({ group = null, me = null }) {
               ? 'Shares are what each member ate this month (specials split between that day’s eaters). What each member has paid the owner is in “Group payments”.'
               : 'Bills are what each customer ate this month (group members: their share). Payments and dues are in the Dues tab.'}
           </p>
+
+          {!group && (
+            <div className="mt-8">
+              <h4 className="text-base font-extrabold">
+                Non-membership orders (paid){' '}
+                <span className="text-sm font-normal text-muted">
+                  {guests.length} orders · {rupees(guestTotal)}
+                </span>
+              </h4>
+              <p className="mt-1 text-xs text-muted">
+                “Today only” orders from the home page, by people without an account. An order shows here once you
+                mark it <em>Payment received</em> in the Orders tab.
+              </p>
+              {guests.length === 0 ? (
+                <p className="mt-3 text-sm text-muted">No paid non-membership orders this month.</p>
+              ) : (
+                <div className="mt-3 overflow-x-auto rounded-xl border border-line">
+                  <table className="w-full min-w-[640px] text-left text-sm">
+                    <thead className="bg-cream-dark text-xs tracking-wider text-muted uppercase">
+                      <tr>
+                        <th className="px-3 py-2 font-semibold">Day</th>
+                        <th className="px-3 py-2 font-semibold">Name</th>
+                        <th className="px-3 py-2 font-semibold">Order</th>
+                        <th className="px-3 py-2 text-right font-semibold">Tiffins</th>
+                        <th className="px-3 py-2 text-right font-semibold">Paid</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-line bg-white">
+                      {guests.map((g) => (
+                        <tr key={g._id}>
+                          <td className="px-3 py-2 whitespace-nowrap">{Number(g.date.slice(8))} {monthLabel(month).split(' ')[0]}</td>
+                          <td className="px-3 py-2">
+                            <span className="font-semibold">{g.name}</span>
+                            <span className="block text-xs text-muted">
+                              #{g.code} · +{g.phone.slice(0, 2)} {g.phone.slice(2)}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2">{g.items.map((i) => `${i.name} ×${i.qty}`).join(', ')}</td>
+                          <td className="px-3 py-2 text-right tabular-nums">{g.tiffins}</td>
+                          <td className="px-3 py-2 text-right font-bold tabular-nums">{rupees(g.amount)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot className="bg-cream-dark/60 font-semibold">
+                      <tr>
+                        <td className="px-3 py-2" colSpan={3}>
+                          Total
+                        </td>
+                        <td className="px-3 py-2 text-right tabular-nums">
+                          {guests.reduce((s, g) => s + g.tiffins, 0)}
+                        </td>
+                        <td className="px-3 py-2 text-right tabular-nums">{rupees(guestTotal)}</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
         </>
       )}
     </section>

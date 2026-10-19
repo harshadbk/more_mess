@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { MessageCircle, User, Users } from 'lucide-react'
 import { FormError } from '../../components/account/Field.jsx'
 import { api } from '../../lib/api.js'
+import useLiveReload from '../../lib/useLiveReload.js'
 import { businessConfig } from '../../data/businessConfig.js'
 import { rupees } from '../../data/accountOptions.js'
 import { Stat } from './shared.jsx'
@@ -16,13 +17,23 @@ const reminderUrl = (row) =>
 /** What every group and individual has eaten, paid and still owes. */
 export default function DuesTab() {
   const [rows, setRows] = useState(null)
+  const [guests, setGuests] = useState({ amount: 0, orders: 0 }) // paid non-membership orders, all time
   const [error, setError] = useState('')
 
-  useEffect(() => {
+  const load = () =>
     api('/admin/dues')
-      .then(({ dues }) => setRows([...dues].sort((a, b) => b.pending - a.pending)))
+      .then(({ dues, guests }) => {
+        setRows([...dues].sort((a, b) => b.pending - a.pending))
+        setGuests(guests ?? { amount: 0, orders: 0 })
+        setError('')
+      })
       .catch((err) => setError(err.message))
+
+  useEffect(() => {
+    load()
   }, [])
+  // New orders change what people owe: keep the numbers live.
+  useLiveReload(load)
 
   if (error) return <FormError message={error} />
   if (!rows) return <p className="text-muted">Working out dues…</p>
@@ -31,18 +42,24 @@ export default function DuesTab() {
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-4 sm:grid-cols-3">
-        <Stat label="Total charges" value={rupees(sum('charges'))} />
-        <Stat label="Total paid (agreed)" value={rupees(sum('paid'))} tone="text-fresh" />
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <Stat label="Members’ charges" value={rupees(sum('charges'))} />
+        <Stat label="Members paid (agreed)" value={rupees(sum('paid'))} tone="text-fresh" />
         <Stat
-          label="Total pending"
+          label="Members pending"
           value={rupees(rows.reduce((t, r) => t + Math.max(0, r.pending), 0))}
           tone="text-[#b4442a]"
         />
+        <Stat label={`Non-membership paid (${guests.orders} orders)`} value={rupees(guests.amount)} tone="text-fresh" />
       </div>
+      <p className="rounded-xl bg-fresh/5 px-4 py-3 text-sm">
+        Revenue received: <strong className="text-forest">{rupees(sum('paid') + guests.amount)}</strong>
+        <span className="text-muted"> (members’ agreed payments + paid non-membership orders)</span>
+      </p>
       <p className="text-sm text-muted">
         Charges = every tiffin up to today at that day's price, plus specials. Paid counts only payments both sides
-        agreed. Groups include their members' own payments.
+        agreed. Groups include their members' own payments. Non-membership orders count only once marked
+        paid in the Orders tab, so they never have anything pending.
       </p>
 
       <div className="card overflow-x-auto">

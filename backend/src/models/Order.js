@@ -29,4 +29,5 @@ const orderSchema = new mongoose.Schema({
 orderSchema.index({ account: 1, date: 1 }, { unique: true })
 orderSchema.index({ date: 1 })
 
+export { itemSchema }
 export default mongoose.model('Order', orderSchema)

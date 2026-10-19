@@ -1,5 +1,6 @@
 import { ArrowRight, CalendarCheck, Leaf, MapPin, ShoppingBag, Users } from 'lucide-react'
 import WhatsAppButton from './WhatsAppButton.jsx'
+import { RatingBadge, TodaysMealLinks } from './HeroHighlights.jsx'
 import { businessConfig } from '../data/businessConfig.js'
 import { messages } from '../utils/whatsapp.js'
 import { foodTypeLabel, mealTimingList, shortLocation, showCustomerCount } from '../utils/business.js'
@@ -20,15 +21,18 @@ export default function Hero() {
         />
       </div>
 
-      <div className="container-page relative grid items-center gap-12 pt-8 pb-16 sm:pt-12 lg:grid-cols-[1.05fr_1fr] lg:gap-10 lg:pt-16 lg:pb-24">
-        <div className="max-w-xl">
+      <div className="container-page relative grid items-center gap-12 pt-4 pb-16 sm:pt-6 lg:grid-cols-[1.15fr_1fr] lg:gap-10 lg:pt-6 lg:pb-20">
+        <div className="max-w-xl lg:max-w-none">
+          <div className="mb-4">
+            <RatingBadge />
+          </div>
           <p className="eyebrow">
             <span className="h-px w-6 bg-fresh" aria-hidden="true" />
             Your daily meal destination
           </p>
           <h1
             id="hero-title"
-            className="mt-5 text-[2.6rem] leading-[1.05] font-extrabold text-forest sm:text-6xl lg:text-[4.1rem]"
+            className="mt-3 text-[2.4rem] leading-[1.05] font-extrabold text-forest sm:text-6xl lg:text-[3.6rem]"
           >
             Ghar Jaisa Khana,{' '}
             <span className="relative whitespace-nowrap text-charcoal">
@@ -49,26 +53,28 @@ export default function Hero() {
               </svg>
             </span>
           </h1>
-          <p className="mt-7 text-lg leading-relaxed text-muted sm:text-xl">
+          <p className="mt-5 text-base leading-relaxed text-muted sm:text-lg">
             Delicious, satisfying daily meals made for your everyday routine. Discover the menu, explore meal plans, and
             find your place at {businessConfig.name}.
           </p>
 
-          <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
-            <a href="#menu" className="btn-primary group">
+          <TodaysMealLinks />
+
+          <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+            <a href="#menu" className="btn-primary group sm:px-5">
               Explore Our Menu
               <ArrowRight className="size-[18px] transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
             </a>
-            <a href="#order-today" className="btn-saffron">
+            <a href="#order-today" className="btn-saffron sm:px-5">
               <ShoppingBag className="size-[18px]" aria-hidden="true" />
               Order for Today
             </a>
-            <WhatsAppButton signUp="Join Sai Mess" message={messages.join()} className="btn-outline">
+            <WhatsAppButton signUp="Join Sai Mess" message={messages.join()} className="btn-outline sm:px-5">
               Join Us on WhatsApp
             </WhatsAppButton>
           </div>
 
-          <ul className="mt-8 flex flex-wrap gap-x-6 gap-y-3 text-sm text-charcoal/80">
+          <ul className="mt-6 flex flex-wrap gap-x-6 gap-y-3 text-sm text-charcoal/80">
             {shortLocation && (
               <li className="flex items-center gap-2">
                 <MapPin className="size-4 text-fresh" aria-hidden="true" />

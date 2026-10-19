@@ -1,9 +1,11 @@
-import { useEffect, useState } from 'react'
-import { ChefHat, Coffee, Moon, Printer, Sparkles, Sun, User, Users } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { ChefHat, Coffee, MessageCircle, Moon, Printer, Sparkles, Sun, User, Users } from 'lucide-react'
 import Field, { FormError } from '../../components/account/Field.jsx'
 import { api } from '../../lib/api.js'
+import useLiveReload from '../../lib/useLiveReload.js'
 import { formatDate, rupees, todayIST } from '../../data/accountOptions.js'
 import { Stat } from './shared.jsx'
+import { useNotice } from '../../components/Notice.jsx'
 
 const meals = [
   { meal: 'breakfast', label: 'Breakfast', icon: Coffee },
@@ -50,18 +52,139 @@ function OrderRows({ rows, kind }) {
   )
 }
 
+const STATUS = {
+  new: { label: 'To confirm', tone: 'bg-saffron-soft text-charcoal' },
+  confirmed: { label: 'Confirmed · payment due', tone: 'bg-forest/10 text-forest' },
+  paid: { label: 'Paid', tone: 'bg-fresh text-white' },
+  cancelled: { label: 'Cancelled', tone: 'bg-[#b4442a]/10 text-[#b4442a]' },
+}
+const time = (iso) => new Date(iso).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })
+
+/** One non-membership order: confirm it, then record the payment (with the final price) once it came in. */
+function GuestRow({ g, onStatus }) {
+  const [amount, setAmount] = useState(String(g.amount))
+  useEffect(() => setAmount(String(g.amount)), [g.amount])
+
+  return (
+    <li className={`py-4 ${g.status === 'cancelled' ? 'opacity-60' : ''}`}>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="font-semibold">
+            {g.name}
+            <span className="ml-2 text-xs font-normal text-muted">
+              #{g.code} · ordered {time(g.createdAt)}
+              {g.paidAt && ` · paid ${time(g.paidAt)}`}
+            </span>
+            <span className={`ml-2 rounded-full px-2 py-0.5 text-xs font-semibold ${STATUS[g.status].tone}`}>
+              {STATUS[g.status].label}
+            </span>
+          </p>
+          <p className="mt-1 text-sm">{itemsText(g.items)}</p>
+          <p className="mt-1 text-sm text-muted">
+            {g.delivery === 'delivery' ? `Deliver to: ${g.address}` : 'Pickup from the mess'}
+            {g.note && ` · “${g.note}”`}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 print:hidden">
+          <a
+            href={`https://wa.me/${g.phone}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn-outline min-h-9 px-3 text-sm"
+          >
+            <MessageCircle className="size-4" aria-hidden="true" />
+            +{g.phone.slice(0, 2)} {g.phone.slice(2)}
+          </a>
+          {g.status === 'new' && (
+            <>
+              <strong className="tabular-nums">{rupees(g.amount)}</strong>
+              <button type="button" onClick={() => onStatus(g, 'confirmed')} className="btn-primary min-h-9 px-3 text-sm">
+                Confirm order
+              </button>
+            </>
+          )}
+          {g.status === 'confirmed' && (
+            <form
+              className="flex items-center gap-2"
+              onSubmit={(e) => {
+                e.preventDefault()
+                onStatus(g, 'paid', Number(amount))
+              }}
+            >
+              <label className="flex items-center gap-1 text-sm">
+                <span className="text-muted">₹</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  required
+                  aria-label={`Amount ${g.name} paid`}
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  className="w-20 rounded-lg border border-line bg-white px-2 py-1.5 text-right tabular-nums"
+                />
+              </label>
+              <button type="submit" className="btn-primary min-h-9 px-3 text-sm">
+                Payment received
+              </button>
+            </form>
+          )}
+          {g.status === 'paid' && (
+            <>
+              <strong className="text-fresh tabular-nums">{rupees(g.amount)} received</strong>
+              <button type="button" onClick={() => onStatus(g, 'confirmed')} className="btn-outline min-h-9 px-3 text-sm">
+                Undo payment
+              </button>
+            </>
+          )}
+          {(g.status === 'new' || g.status === 'confirmed') && (
+            <button type="button" onClick={() => onStatus(g, 'cancelled')} className="btn-outline min-h-9 px-3 text-sm">
+              Cancel
+            </button>
+          )}
+          {g.status === 'cancelled' && (
+            <button type="button" onClick={() => onStatus(g, 'new')} className="btn-outline min-h-9 px-3 text-sm">
+              Undo cancel
+            </button>
+          )}
+        </div>
+      </div>
+    </li>
+  )
+}
+
 /** What to cook on a day: kitchen totals per dish, then every group's and person's order. */
 export default function OrdersTab({ date, setDate }) {
   const [data, setData] = useState(null)
   const [error, setError] = useState('')
 
+  const notify = useNotice()
+  const [tick, setTick] = useState(0)
+  // Customers keep placing and changing orders: reload regularly, keeping the list on screen meanwhile.
+  useLiveReload(() => setTick((t) => t + 1))
+
+  const shownDate = useRef(date)
   useEffect(() => {
-    setData(null)
+    if (shownDate.current !== date) {
+      shownDate.current = date
+      setData(null)
+    }
     setError('')
     api(`/admin/orders?date=${date}`)
       .then(setData)
       .catch((err) => setError(err.message))
-  }, [date])
+  }, [date, tick])
+
+  // Totals and the kitchen list change with a WhatsApp order's status, so reload after saving it.
+  const setStatus = async (order, status, amount) => {
+    if (status === 'cancelled' && !window.confirm(`Cancel ${order.name}'s order #${order.code}?`)) return
+    try {
+      await api(`/admin/guest-orders/${order._id}`, { method: 'PATCH', body: { status, amount } })
+      setTick((t) => t + 1)
+    } catch (err) {
+      notify(err.message)
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -89,7 +212,7 @@ export default function OrdersTab({ date, setDate }) {
             Orders for <strong className="text-charcoal">{formatDate(data.date)}</strong>
             {data.date > todayIST() ? ' (plans and changes so far; may still change until the cut-off times)' : ''}.
           </p>
-          <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
             {meals.map((m) => (
               <Stat
                 key={m.meal}
@@ -98,7 +221,8 @@ export default function OrdersTab({ date, setDate }) {
                 tone={m.meal === 'special' ? 'text-saffron' : 'text-forest'}
               />
             ))}
-            <Stat label="Bill for the day" value={rupees(data.amount)} tone="text-charcoal" />
+            <Stat label="Members' bill" value={rupees(data.amount)} tone="text-charcoal" />
+            <Stat label="Non-membership paid" value={rupees(data.guestPaid ?? 0)} tone="text-fresh" />
           </div>
 
           <section className="card p-6">
@@ -131,6 +255,39 @@ export default function OrdersTab({ date, setDate }) {
                   )
                 })}
               </div>
+            )}
+          </section>
+
+          <section className="card p-6">
+            <h3 className="flex items-center gap-2 text-lg font-extrabold">
+              <MessageCircle className="size-5 text-fresh" aria-hidden="true" />
+              Non-membership orders ({(data.guests ?? []).filter((g) => g.status !== 'cancelled').length})
+            </h3>
+            <ol className="mt-2 flex flex-wrap gap-x-2 gap-y-1 text-sm text-muted">
+              <li>
+                <strong className="text-charcoal">1.</strong> Order comes in from the home page (WhatsApp)
+              </li>
+              <li aria-hidden="true">→</li>
+              <li>
+                <strong className="text-charcoal">2.</strong> Reply on WhatsApp, then <em>Confirm order</em>
+              </li>
+              <li aria-hidden="true">→</li>
+              <li>
+                <strong className="text-charcoal">3.</strong> Once the money is in, <em>Payment received</em>
+              </li>
+            </ol>
+            <p className="mt-1 text-xs text-muted">
+              Every order that isn’t cancelled is in the kitchen list. Only paid ones count as revenue: in the
+              monthly sheet, the heatmap and the dues.
+            </p>
+            {!data.guests?.length ? (
+              <p className="mt-3 text-muted">No non-membership orders.</p>
+            ) : (
+              <ul className="mt-2 divide-y divide-line">
+                {data.guests.map((g) => (
+                  <GuestRow key={g._id} g={g} onStatus={setStatus} />
+                ))}
+              </ul>
             )}
           </section>
 

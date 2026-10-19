@@ -21,10 +21,11 @@ export const messages = {
   plan: (plan) =>
     `${greeting} I would like to enquire about the ${plan.name}. Please share the price, included meals and timings.`,
   faq: (question) => `${greeting} I have a question: ${question}`,
-  todayOrder: ({ date, name, phone, meal, count, food, delivery, address, note }) =>
+  todayOrder: ({ code, date, name, phone, meal, count, food, delivery, address, note }) =>
     [
       `${greeting} I want to order tiffin for today only.`,
       '',
+      code ? `Order no: ${code}` : null,
       `Date: ${date}`,
       `Name: ${name}`,
       `Phone: ${phone}`,

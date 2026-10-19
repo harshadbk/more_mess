@@ -121,7 +121,7 @@ export default function PaymentsTab({ users, groups }) {
         <Stat label="Waiting for customer" value={waiting} tone="text-muted" />
       </div>
 
-      <div className="grid gap-8 lg:grid-cols-[22rem_1fr]">
+      <div className="mx-auto grid max-w-4xl gap-8">
         <AddPaymentForm users={users} groups={groups} onAdded={(p) => setPayments((list) => [p, ...list])} />
         <div className="space-y-4">
           <div className="max-w-xs">

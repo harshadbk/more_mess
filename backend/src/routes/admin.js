@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import Dish from '../models/Dish.js'
 import Group from '../models/Group.js'
+import GuestOrder from '../models/GuestOrder.js'
 import Order from '../models/Order.js'
 import Review from '../models/Review.js'
 import User from '../models/User.js'
@@ -66,8 +67,9 @@ router.get('/orders', async (req, res) => {
   const date = isDate(req.query.date) ? req.query.date : today()
   if (date <= today()) await catchUp()
 
-  const [orders, users, groups, dishes, settings] = await Promise.all([
+  const [orders, guestOrders, users, groups, dishes, settings] = await Promise.all([
     Order.find({ date }),
+    GuestOrder.find({ date }).sort({ createdAt: 1 }),
     User.find({ role: 'user' }),
     Group.find(),
     Dish.find({ date }).sort({ createdAt: 1 }),
@@ -110,9 +112,13 @@ router.get('/orders', async (req, res) => {
       )
   }
 
+  // Non-membership (WhatsApp) orders are cooked unless cancelled, but only paid ones count as money.
+  const guests = guestOrders.filter((g) => g.status !== 'cancelled')
+  const guestPaid = guestOrders.filter((g) => g.status === 'paid').reduce((s, g) => s + g.amount, 0)
+
   // Kitchen list: how many of each dish, per meal.
   const kitchen = {}
-  for (const o of all) {
+  for (const o of [...all, ...guests]) {
     for (const i of o.items) {
       const key = `${i.meal}|${i.name}`
       kitchen[key] = kitchen[key] ?? { meal: i.meal, name: i.name, qty: 0 }
@@ -123,7 +129,10 @@ router.get('/orders', async (req, res) => {
   const total = Object.fromEntries(
     [...MEALS, 'special'].map((meal) => [
       meal,
-      all.reduce((s, o) => s + o.items.filter((i) => i.meal === meal).reduce((t, i) => t + i.qty, 0), 0),
+      [...all, ...guests].reduce(
+        (s, o) => s + o.items.filter((i) => i.meal === meal).reduce((t, i) => t + i.qty, 0),
+        0,
+      ),
     ]),
   )
 
@@ -148,18 +157,61 @@ router.get('/orders', async (req, res) => {
     date,
     total,
     kitchen: Object.values(kitchen).sort((a, b) => order.indexOf(a.meal) - order.indexOf(b.meal) || b.qty - a.qty),
-    amount: rows.reduce((s, r) => s + r.amount, 0),
+    amount: rows.reduce((s, r) => s + r.amount, 0), // members' bills
+    guestPaid,
     groups: rows.filter((r) => r.kind === 'group'),
     individuals: rows.filter((r) => r.kind === 'user'),
+    guests: guestOrders.map((g) => ({
+      _id: g._id,
+      code: g.code,
+      name: g.name,
+      phone: g.phone,
+      items: g.items.map(({ meal, name, price, qty }) => ({ meal, name, price, qty })),
+      amount: g.amount,
+      delivery: g.delivery,
+      address: g.address,
+      note: g.note,
+      status: g.status,
+      paidAt: g.paidAt,
+      createdAt: g.createdAt,
+    })),
   })
+})
+
+// Move a non-membership (WhatsApp) order along: { status: 'new' | 'confirmed' | 'paid' | 'cancelled', amount? }
+// 'paid' = the admin checked the money came in; `amount` is the final price agreed on WhatsApp.
+router.patch('/guest-orders/:id', async (req, res) => {
+  const { status } = req.body
+  if (!['new', 'confirmed', 'paid', 'cancelled'].includes(status)) {
+    return res.status(400).json({ error: 'Pick a status.' })
+  }
+  const order = await GuestOrder.findById(req.params.id)
+  if (!order) return res.status(404).json({ error: 'Order not found.' })
+  if (status === 'paid') {
+    if (req.body.amount !== undefined) {
+      const amount = Number(req.body.amount)
+      if (!Number.isFinite(amount) || amount < 0 || amount > 100000) {
+        return res.status(400).json({ error: 'Enter the amount paid.' })
+      }
+      order.amount = Math.round(amount)
+    }
+    order.paidAt = order.paidAt ?? new Date()
+  } else order.paidAt = null
+  order.status = status
+  await order.save()
+  res.json({ order: { _id: order._id, status: order.status, amount: order.amount, paidAt: order.paidAt } })
 })
 
 // Tiffins per day for the whole mess, for the heatmap (default last 26 weeks).
 router.get('/history', async (req, res) => {
   await catchUp()
   const days = Math.min(Number(req.query.days) || 182, 400)
-  const orders = await Order.find({ date: { $gte: addDays(today(), 1 - days), $lte: today() } })
-  res.json({ days: perDay(orders) })
+  const range = { date: { $gte: addDays(today(), 1 - days), $lte: today() } }
+  const [orders, guests] = await Promise.all([
+    Order.find(range),
+    GuestOrder.find({ ...range, status: 'paid' }), // non-membership orders count once paid
+  ])
+  res.json({ days: perDay([...orders, ...guests]) })
 })
 
 // The month's register: every customer, what they ate each day, and their bill. ?month=YYYY-MM
@@ -172,7 +224,15 @@ router.get('/month', async (req, res) => {
 
 // What every group and individual owes.
 router.get('/dues', async (_req, res) => {
-  res.json({ dues: await allDues() })
+  const [dues, [guests]] = await Promise.all([
+    allDues(),
+    GuestOrder.aggregate([
+      { $match: { status: 'paid' } },
+      { $group: { _id: null, amount: { $sum: '$amount' }, orders: { $sum: 1 } } },
+    ]),
+  ])
+  // Non-membership orders are paid in full before they count, so they never have anything pending.
+  res.json({ dues, guests: { amount: guests?.amount ?? 0, orders: guests?.orders ?? 0 } })
 })
 
 router.get('/prices', async (_req, res) => {

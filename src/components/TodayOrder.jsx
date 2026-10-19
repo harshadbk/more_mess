@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { ArrowLeft, Bike, Clock, Coffee, Lock, MessageCircle, Moon, Store, Sun } from 'lucide-react'
 import SectionHeading from './SectionHeading.jsx'
 import Reveal from './Reveal.jsx'
-import Field, { ChoiceGroup } from './account/Field.jsx'
+import Field, { ChoiceGroup, FormError } from './account/Field.jsx'
 import DishItem from './account/DishItem.jsx'
 import { businessConfig } from '../data/businessConfig.js'
 import { api } from '../lib/api.js'
@@ -56,12 +56,18 @@ function validate(v) {
   return errors
 }
 
-/** "Order for today only": builds a WhatsApp message with all details; the mess replies on WhatsApp. */
+/**
+ * "Order for today only": saves the order (so the kitchen and the admin panel see it), then builds a WhatsApp
+ * message with all details and the order number; the mess replies on WhatsApp to confirm it.
+ */
 export default function TodayOrder() {
   const [values, setValues] = useState(emptyOrder)
   const [errors, setErrors] = useState({})
   const [draft, setDraft] = useState(null)
   const [sent, setSent] = useState(false) // true after they open WhatsApp to send
+  const [saved, setSaved] = useState(null) // { id, token } once saved; "Edit order" then updates the same order
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState('')
   const formRef = useRef(null)
   const previewRef = useRef(null)
   const [menu, setMenu] = useState(null) // today's menu, cut-off times and closed meals (null = not loaded)
@@ -76,9 +82,7 @@ export default function TodayOrder() {
   }, [])
 
   // A meal can't be ordered after its cut-off time today.
-  // (Test mode on the server: nothing closes.)
-  const closed = (meal) =>
-    !menu?.anyDay && Boolean(menu?.locked?.includes(meal) || (menu?.cutoffs && now >= menu.cutoffs[meal]))
+  const closed = (meal) => Boolean(menu?.locked?.includes(meal) || (menu?.cutoffs && now >= menu.cutoffs[meal]))
   // Closing meals drop out of the order.
   useEffect(() => {
     setValues((v) => (v.meals.some(closed) ? { ...v, meals: v.meals.filter((m) => !closed(m)) } : v))
@@ -108,8 +112,10 @@ export default function TodayOrder() {
     set('meals')(values.meals.includes(meal) ? values.meals.filter((m) => m !== meal) : [...values.meals, meal])
   }
 
-  const onSubmit = (e) => {
+  const onSubmit = async (e) => {
     e.preventDefault()
+    if (saving) return
+    setSaveError('')
     const found = validate(values)
     setErrors(found)
     const first = ['name', 'phone', 'meals', 'count', 'address'].find((f) => found[f])
@@ -123,7 +129,38 @@ export default function TodayOrder() {
       .map((m) => (pickedOf(m.id) ? `${m.label} (${pickedOf(m.id).name})` : m.label))
       .join(', ')
 
+    // Save it first, so it shows up in the kitchen list. If the server can't be reached, WhatsApp still works.
+    let code = ''
+    setSaving(true)
+    try {
+      const body = {
+        name: values.name.trim(),
+        phone: normalizeIndianNumber(values.phone),
+        meals: values.meals,
+        choice: Object.fromEntries(values.meals.map((m) => [m, pickedOf(m)?._id]).filter(([, id]) => id)),
+        count: Number(values.count),
+        food: food === 'Non-veg' ? 'non-veg' : 'veg',
+        delivery: values.delivery,
+        address: values.address.trim(),
+        note: values.note.trim(),
+      }
+      const { order, token } = saved
+        ? await api(`/guest-orders/${saved.id}`, { method: 'PUT', body: { ...body, token: saved.token } })
+        : await api('/guest-orders', { method: 'POST', body })
+      if (!saved) setSaved({ id: order._id, token })
+      code = order.code
+    } catch (err) {
+      if (err.status) {
+        // The server said no (e.g. a meal just closed): fix the form first.
+        setSaveError(err.message)
+        return
+      }
+    } finally {
+      setSaving(false)
+    }
+
     const text = messages.todayOrder({
+      code,
       date: today,
       name: values.name.trim(),
       phone: formatIndianNumber(normalizeIndianNumber(values.phone)),
@@ -172,7 +209,7 @@ export default function TodayOrder() {
                   Check your order
                 </h3>
                 <p className="mt-2 text-[15px] text-muted">
-                  Nothing has been sent yet. Tap the button to open WhatsApp, then press send.
+                  Your order is noted. Tap the button to open WhatsApp, then press send so we can confirm it.
                 </p>
                 <pre className="mt-5 rounded-2xl border border-line bg-cream p-4 font-sans text-sm leading-relaxed whitespace-pre-wrap text-charcoal">
                   {draft.text}
@@ -188,6 +225,7 @@ export default function TodayOrder() {
                       setTimeout(() => {
                         setDraft(null)
                         setValues(emptyOrder)
+                        setSaved(null) // the next order is a new one
                         setSent(true)
                       }, 300)
                     }}
@@ -378,9 +416,10 @@ export default function TodayOrder() {
                   value={values.note}
                   onChange={onInput}
                 />
-                <button type="submit" className="btn-primary w-full">
+                <FormError message={saveError} />
+                <button type="submit" className="btn-primary w-full" disabled={saving}>
                   <MessageCircle className="size-[18px]" aria-hidden="true" />
-                  Prepare WhatsApp order
+                  {saving ? 'Saving your order…' : 'Prepare WhatsApp order'}
                 </button>
               </form>
             )}

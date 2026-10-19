@@ -180,7 +180,6 @@ export default function MenuTab() {
   const [date, setDate] = useState(todayIST())
   const [dishes, setDishes] = useState(null)
   const [locked, setLocked] = useState([])
-  const [testMode, setTestMode] = useState(false)
   const [editing, setEditing] = useState(null)
   const [error, setError] = useState('')
 
@@ -188,10 +187,9 @@ export default function MenuTab() {
     setDishes(null)
     setEditing(null)
     api(`/menu?date=${date}`)
-      .then(({ dishes, locked, anyDay }) => {
+      .then(({ dishes, locked }) => {
         setDishes(dishes)
         setLocked(locked ?? [])
-        setTestMode(Boolean(anyDay))
       })
       .catch((err) => setError(err.message))
   }, [date])
@@ -228,7 +226,14 @@ export default function MenuTab() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-end gap-3">
         <div className="w-48">
-          <Field label="Menu for" name="menuDate" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+          <Field
+            label="Menu for"
+            name="menuDate"
+            type="date"
+            min={todayIST()}
+            value={date}
+            onChange={(e) => e.target.value && setDate(e.target.value)}
+          />
         </div>
         <button type="button" onClick={() => setDate(todayIST())} className="btn-outline min-h-11 px-4 text-sm">
           Today
@@ -242,14 +247,8 @@ export default function MenuTab() {
         </button>
       </div>
       <FormError message={error} />
-      {testMode && (
-        <p className="rounded-xl border border-dashed border-saffron bg-saffron-soft/40 px-4 py-3 text-sm">
-          <strong>Test mode:</strong> you can add dishes for any date (past days too) and customers can order at any
-          time. Set <code>ALLOW_ANY_DAY=false</code> in <code>backend/.env</code> before going live.
-        </p>
-      )}
 
-      <div className="grid gap-8 lg:grid-cols-[1fr_24rem]">
+      <div className="mx-auto grid max-w-4xl gap-8">
         <div className="space-y-4">
           {!dishes && !error && <p className="text-muted">Loading menu…</p>}
           {dishes &&

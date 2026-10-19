@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { MessageCircle } from 'lucide-react'
 import { buildWhatsAppUrl, messages } from '../utils/whatsapp.js'
@@ -37,11 +38,25 @@ export default function WhatsAppButton({
 }
 
 export function FloatingWhatsApp() {
+  // The hero has its own WhatsApp button: the floating one appears once you scroll past it,
+  // so it never covers the hero's buttons on a phone.
+  const [shown, setShown] = useState(false)
+  useEffect(() => {
+    const check = () => setShown(window.scrollY > window.innerHeight * 0.6)
+    check()
+    window.addEventListener('scroll', check, { passive: true })
+    return () => window.removeEventListener('scroll', check)
+  }, [])
+
   return (
     <WhatsAppButton
       message={messages.general()}
       icon={false}
-      className="fixed right-4 bottom-4 z-40 inline-flex size-14 items-center justify-center rounded-full bg-fresh text-white shadow-lift ring-4 ring-white/70 transition-transform duration-200 hover:scale-105 hover:bg-forest sm:right-6 sm:bottom-6"
+      tabIndex={shown ? undefined : -1}
+      aria-hidden={shown ? undefined : true}
+      className={`fixed right-4 bottom-4 z-40 inline-flex size-14 items-center justify-center rounded-full bg-fresh text-white shadow-lift ring-4 ring-white/70 transition-[transform,opacity] duration-200 hover:scale-105 hover:bg-forest sm:right-6 sm:bottom-6 ${
+        shown ? 'opacity-100' : 'pointer-events-none translate-y-4 opacity-0'
+      }`}
       aria-label="Chat with Sai Mess on WhatsApp"
     >
       <MessageCircle className="size-6" aria-hidden="true" />

@@ -87,8 +87,10 @@ export default function Admin() {
 
   return (
     <AccountLayout wide>
-      <p className="eyebrow">Admin</p>
-      <h1 className="mt-3 text-3xl font-extrabold sm:text-4xl">Sai Mess dashboard</h1>
+      <div className="text-center">
+        <p className="eyebrow">Admin</p>
+        <h1 className="mt-3 text-3xl font-extrabold sm:text-4xl">Sai Mess dashboard</h1>
+      </div>
 
       <div className="mt-8 grid gap-4 sm:grid-cols-3">
         <Stat label="Active customers" value={users ? customers.filter((u) => u.active !== false).length : null} />
@@ -103,7 +105,7 @@ export default function Admin() {
         />
       </div>
 
-      <div className="mt-10 flex flex-wrap gap-2 print:hidden" role="tablist">
+      <div className="mt-10 flex flex-wrap justify-center gap-2 print:hidden" role="tablist">
         {tabs.map((t) => (
           <button
             key={t.id}

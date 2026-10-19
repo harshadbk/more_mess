@@ -12,6 +12,7 @@
 // Non-veg is only served on Sundays and Wednesdays.
 import Dish from './models/Dish.js'
 import Group from './models/Group.js'
+import GuestOrder from './models/GuestOrder.js'
 import MemberPayment from './models/MemberPayment.js'
 import Order from './models/Order.js'
 import Payment from './models/Payment.js'
@@ -39,9 +40,8 @@ export const nonVegDay = (date) => [0, 3].includes(new Date(`${date}T00:00:00Z`)
 // The dishes that can actually be served on `date` (non-veg dishes only on non-veg days).
 export const servedDishes = (dishes, date) => dishes.filter((d) => d.food !== 'non-veg' || nonVegDay(date))
 
-// TESTING ONLY: ALLOW_ANY_DAY=true in .env lets orders (and menus) be changed on any day, past days
-// included, with no cut-off times, and keeps old menus. Turn it off before going live.
-export const anyDay = () => process.env.ALLOW_ANY_DAY === 'true'
+// Orders can be placed up to this many days ahead.
+export const DAYS_AHEAD = 30
 
 const nowTime = () => new Date().toLocaleTimeString('en-GB', { timeZone: 'Asia/Kolkata', hour12: false }).slice(0, 5)
 
@@ -53,7 +53,7 @@ export async function getSettings() {
 
 // Meals that can no longer be changed on `date` (past days: all; today: after each cut-off time).
 export function lockedMeals(date, cutoffs) {
-  if (date > today() || anyDay()) return []
+  if (date > today()) return []
   if (date < today()) return [...MEALS, 'special']
   const now = nowTime()
   const locked = MEALS.filter((meal) => now >= cutoffs[meal])
@@ -64,7 +64,6 @@ export function lockedMeals(date, cutoffs) {
 // A menu is only good until each meal's cut-off: dishes from past days and today's closed meals
 // are deleted. Orders keep their own copy of each dish's name and price, so bills don't change.
 export async function dropExpiredDishes() {
-  if (anyDay()) return // testing: keep old menus so past days can still be ordered from them
   const { cutoffs } = await getSettings()
   const date = today()
   await Dish.deleteMany({ $or: [{ date: { $lt: date } }, { date, meal: { $in: lockedMeals(date, cutoffs) } }] })
@@ -75,7 +74,7 @@ export async function dropExpiredDishes() {
 export const itemsAmount = (items) => items.reduce((sum, i) => sum + i.price * i.qty, 0)
 
 // One cart line for a dish (or the plain "Lunch tiffin" when no dish is chosen/posted).
-function itemFor(meal, dish, qty, prices, food = 'veg') {
+export function itemFor(meal, dish, qty, prices, food = 'veg') {
   if (!dish) return { meal, dish: null, name: `${LABEL[meal]} tiffin`, food, price: prices[meal] || 0, base: true, qty }
   const own = dish.price > 0
   const price = own ? dish.price : prices[meal] || 0
@@ -222,7 +221,6 @@ export async function dayFor(user, date) {
     startsOn: order.items.length ? null : startsOn,
     dishes,
     nonVegDay: nonVegDay(date),
-    anyDay: anyDay(), // testing mode: past days can be changed too
     prices: settings.prices,
     cutoffs: settings.cutoffs,
     locked: lockedMeals(date, settings.cutoffs),
@@ -234,7 +232,8 @@ export async function dayFor(user, date) {
 // members eating that meal) and gets one tiffin each.
 export async function saveDay(user, date, rawItems = []) {
   if (!isDate(date)) throw fail(400, 'Pick a date.')
-  if (date < today() && !anyDay()) throw fail(400, 'You cannot change a past day.')
+  if (date < today()) throw fail(400, 'You cannot change a past day.')
+  if (date > addDays(today(), DAYS_AHEAD)) throw fail(400, `You can order up to ${DAYS_AHEAD} days ahead.`)
   const acc = await accountOf(user)
   if (!acc.canEdit) throw fail(403, "Only the group's owner can change the group's order.")
 
@@ -286,7 +285,7 @@ export async function saveDay(user, date, rawItems = []) {
 // and prices are refreshed.
 // Meals past their cut-off are left alone (their dishes may already be deleted).
 export async function syncMenuDay(date) {
-  if (date < today() && !anyDay()) return // past bills never change
+  if (date < today()) return // past bills never change
   const [allDishes, { prices, cutoffs }, orders] = await Promise.all([
     Dish.find({ date }).sort({ createdAt: 1 }),
     getSettings(),
@@ -606,14 +605,14 @@ export async function monthSheet(month, group = null) {
   const [y, m] = month.split('-').map(Number)
   const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate()
   const dates = Array.from({ length: lastDay }, (_, i) => `${month}-${String(i + 1).padStart(2, '0')}`)
-  const until = anyDay() ? dates.at(-1) : today() // only days that have happened (test mode: all)
-  const [orders, users, groups] = await Promise.all([
-    Order.find({
-      date: { $gte: dates[0], $lte: until < dates.at(-1) ? until : dates.at(-1) },
-      ...(group ? { account: group._id } : {}),
-    }),
+  const until = today() // only days that have happened
+  const range = { $gte: dates[0], $lte: until < dates.at(-1) ? until : dates.at(-1) }
+  const [orders, users, groups, guestOrders] = await Promise.all([
+    Order.find({ date: range, ...(group ? { account: group._id } : {}) }),
     User.find({ role: 'user' }).sort({ name: 1 }),
     group ? [group] : Group.find(),
+    // Non-membership (WhatsApp) orders, admin sheet only: those the admin marked paid.
+    group ? [] : GuestOrder.find({ date: range, status: 'paid' }).sort({ date: 1, createdAt: 1 }),
   ])
   const groupOf = (id) => groups.find((g) => g.members.some((m) => String(m) === id))
 
@@ -676,7 +675,19 @@ export async function monthSheet(month, group = null) {
     return { ...row, totals: { ...t, tiffins: t.breakfast + t.lunch + t.dinner, amount: Math.round(t.amount) } }
   })
   list.sort((a, b) => (a.group ?? '~').localeCompare(b.group ?? '~') || a.name.localeCompare(b.name))
-  return { month, dates, until, rows: list }
+  const guests = guestOrders.map((g) => ({
+    _id: g._id,
+    code: g.code,
+    date: g.date,
+    name: g.name,
+    phone: g.phone,
+    items: g.items.map(({ meal, name, qty }) => ({ meal, name, qty })),
+    tiffins: g.items.filter((i) => i.meal !== 'special').reduce((s, i) => s + i.qty, 0),
+    amount: g.amount,
+    delivery: g.delivery,
+    paidAt: g.paidAt,
+  }))
+  return { month, dates, until, rows: list, guests }
 }
 
 /* ---------------------------------------------------------------- Groups */

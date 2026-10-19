@@ -4,7 +4,6 @@ import { adminOnly, loggedIn } from '../auth.js'
 import {
   dropExpiredDishes,
   getSettings,
-  anyDay,
   isDate,
   lockedMeals,
   nonVegDay,
@@ -54,7 +53,6 @@ router.get('/', async (req, res) => {
     locked: lockedMeals(date, settings.cutoffs),
     cutoffs: settings.cutoffs, // last time to order each meal ('HH:MM', India time)
     nonVegDay: nonVegDay(date),
-    anyDay: anyDay(), // testing mode: no cut-off times, any date
   })
 })
 

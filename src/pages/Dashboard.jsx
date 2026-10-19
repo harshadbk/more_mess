@@ -10,6 +10,7 @@ import AccountSummary from '../components/account/AccountSummary.jsx'
 import OrderCart from '../components/account/OrderCart.jsx'
 import Heatmap from '../components/account/Heatmap.jsx'
 import MonthTab from './admin/MonthTab.jsx'
+import useLiveReload from '../lib/useLiveReload.js'
 import { useNotice } from '../components/Notice.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
 import { api } from '../lib/api.js'
@@ -291,6 +292,12 @@ function MyHeatmap({ refreshKey, groupName }) {
       .then(setHistory)
       .catch(() => setHistory({ days: [], since: '' }))
   }, [refreshKey])
+  // A group's owner can change what you were ticked for: pick that up too.
+  useLiveReload(() =>
+    api('/orders/history?days=182')
+      .then(setHistory)
+      .catch(() => {}),
+  )
   return (
     <section className="card p-6" aria-labelledby="history-title">
       <h2 id="history-title" className="flex items-center gap-2 text-lg font-extrabold">
@@ -345,40 +352,32 @@ export default function Dashboard() {
 
   return (
     <AccountLayout wide>
-      <p className="eyebrow">Your account</p>
-      <h1 className="mt-3 text-3xl font-extrabold sm:text-4xl">Namaste, {user.name.split(' ')[0]}</h1>
-      <p className="mt-3 max-w-2xl text-muted">
-        {group ? `You eat with the group “${group.name}”.` : 'You are joining as an individual.'} Manage your tiffins
-        and payments here.
-      </p>
-      <FormError message={error} />
-      <div className="mt-8">
-        <ErrorBoundary name="Your account">
-          <AccountSummary refreshKey={refreshKey} />
-        </ErrorBoundary>
-      </div>
+      {/* One centred column on every screen size. */}
+      <div className="mx-auto w-full max-w-4xl">
+        <div className="text-center">
+          <p className="eyebrow">Your account</p>
+          <h1 className="mt-3 text-3xl font-extrabold sm:text-4xl">Namaste, {user.name.split(' ')[0]}</h1>
+          <p className="mx-auto mt-3 max-w-2xl text-muted">
+            {group ? `You eat with the group “${group.name}”.` : 'You are joining as an individual.'} Manage your
+            tiffins and payments here.
+          </p>
+        </div>
+        <FormError message={error} />
 
-      {/* Phones: planner, then plan + group, then calendar + payments. Large screens: plan + group on the right. */}
-      <div className="mt-8 grid gap-8 lg:grid-cols-[1fr_24rem] lg:items-start">
-        <div className="lg:col-start-1">
+        <div className="mt-8 space-y-8">
+          <ErrorBoundary name="Your account">
+            <AccountSummary refreshKey={refreshKey} />
+          </ErrorBoundary>
+
           <ErrorBoundary name="Your order">
             <OrderCart planKey={`${user.meals.join()}|${refreshKey}`} onSaved={refresh} />
           </ErrorBoundary>
-          {group && (
-            <div className="mt-8">
-              <ErrorBoundary name="Group payments">
-                <GroupLedger group={group} refreshKey={refreshKey} onChange={refresh} />
-              </ErrorBoundary>
-            </div>
-          )}
-        </div>
 
-        <aside className="space-y-8 lg:col-start-2 lg:row-span-2 lg:row-start-1">
           <ErrorBoundary name="Your plan">
             <PlanCard />
           </ErrorBoundary>
           {group === undefined ? (
-            <p className="text-muted">Loading group…</p>
+            <p className="text-center text-muted">Loading group…</p>
           ) : group ? (
             <ErrorBoundary name="Your group">
               <GroupCard group={group} currentUser={user} onChange={changeGroup} />
@@ -388,15 +387,18 @@ export default function Dashboard() {
               <NoGroup onGroup={changeGroup} />
             </ErrorBoundary>
           )}
-        </aside>
+          {group && (
+            <ErrorBoundary name="Group payments">
+              <GroupLedger group={group} refreshKey={refreshKey} onChange={refresh} />
+            </ErrorBoundary>
+          )}
 
-        <div className="space-y-8 lg:col-start-1">
           <ErrorBoundary name="Your tiffin calendar">
             <MyHeatmap refreshKey={refreshKey} groupName={group?.name} />
           </ErrorBoundary>
           {group && (
             <ErrorBoundary name="Group tiffins">
-              <MonthTab key={refreshKey} group={group} me={user._id} />
+              <MonthTab group={group} me={user._id} refreshKey={refreshKey} />
             </ErrorBoundary>
           )}
 

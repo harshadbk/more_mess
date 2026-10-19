@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   Check,
   Coffee,
@@ -274,8 +274,13 @@ export default function OrderCart({ planKey, onSaved }) {
     setCart(cartFrom(data.order.items, groupOf(data)))
   }
 
+  // Only a new date blanks the cart; a reload after saving keeps it on screen (no jump in the layout).
+  const shownDate = useRef(date)
   useEffect(() => {
-    setDay(null)
+    if (shownDate.current !== date) {
+      shownDate.current = date
+      setDay(null)
+    }
     api(`/orders?date=${date}`)
       .then(load)
       .catch((err) => notify(err.message))
@@ -293,7 +298,7 @@ export default function OrderCart({ planKey, onSaved }) {
   const isGroup = account.kind === 'group'
   const people = Math.max(1, account.people) // most tiffins of one meal: 1 for a person, 1 per member for a group
   const maxSpecials = isGroup ? 100 : 10
-  const editable = account.canEdit && (date >= todayIST() || day.anyDay)
+  const editable = account.canEdit && date >= todayIST()
   const items = itemsOf(cart)
   const dirty = JSON.stringify(items) !== JSON.stringify(itemsOf(cartFrom(order.items, groupOf(day))))
   const members = account.members ?? []
@@ -375,7 +380,6 @@ export default function OrderCart({ planKey, onSaved }) {
         </h2>
         <div className="flex flex-wrap items-center gap-2">
           {[
-            ...(day.anyDay ? [{ label: 'Yesterday', value: todayIST(-1) }] : []),
             { label: 'Today', value: todayIST() },
             { label: 'Tomorrow', value: todayIST(1) },
           ].map((d) => (
@@ -394,8 +398,8 @@ export default function OrderCart({ planKey, onSaved }) {
           <input
             type="date"
             aria-label="Pick another day"
-            min={day.anyDay ? undefined : todayIST()}
-            max={day.anyDay ? undefined : addDays(todayIST(), 30)}
+            min={todayIST()}
+            max={addDays(todayIST(), 30)}
             value={date}
             onChange={(e) => e.target.value && setDate(e.target.value)}
             className="rounded-full border border-line bg-white px-3 py-1.5 text-sm"
@@ -413,47 +417,28 @@ export default function OrderCart({ planKey, onSaved }) {
           </>
         )}
         {' · '}
-        {order.custom ? (
-          <span className="font-semibold text-saffron">Changed by hand</span>
-        ) : order.items.length ? (
-          'From plans'
-        ) : (
-          'Nothing ordered yet'
-        )}
+        {order.items.length ? (order.custom ? 'Order placed' : 'From plans') : 'Nothing ordered yet'}
       </p>
 
-      <p
-        className={`mt-3 flex items-start gap-2 rounded-xl px-4 py-3 text-sm ${nonVegDay ? 'bg-[#b4442a]/5' : 'bg-fresh/5'}`}
-      >
-        {nonVegDay ? (
+      {nonVegDay && (
+        <p className="mt-3 flex items-start gap-2 rounded-xl bg-[#b4442a]/5 px-4 py-3 text-sm">
           <Drumstick className="mt-0.5 size-4 shrink-0 text-[#b4442a]" aria-hidden="true" />
-        ) : (
-          <Leaf className="mt-0.5 size-4 shrink-0 text-fresh" aria-hidden="true" />
-        )}
-        <span>
-          {nonVegDay
-            ? `Non-veg day: choose Veg or Non-veg for each meal${isGroup ? ', for the whole group' : ''}.`
-            : 'Veg only today. Non-veg is served on Sundays and Wednesdays.'}
-          {nonVegDay && isGroup && account.canEdit && (
-            <>
-              {' '}
-              {account.nonVegMembers} of {account.people} members prefer non-veg.
-            </>
-          )}
-        </span>
-      </p>
-
-      {day.anyDay && (
-        <p className="mt-3 rounded-xl border border-dashed border-saffron bg-saffron-soft/40 px-4 py-3 text-sm">
-          <strong>Test mode:</strong> you can add or remove tiffins on any day, past days included, with no cut-off
-          times. Set <code>ALLOW_ANY_DAY=false</code> in <code>backend/.env</code> before going live.
+          <span>
+            {`Non-veg day: choose Veg or Non-veg for each meal${isGroup ? ', for the whole group' : ''}.`}
+            {isGroup && account.canEdit && (
+              <>
+                {' '}
+                {account.nonVegMembers} of {account.people} members prefer non-veg.
+              </>
+            )}
+          </span>
         </p>
       )}
-      {isGroup && (
+
+      {isGroup && !account.canEdit && (
         <p className="mt-3 rounded-xl bg-forest/5 px-4 py-3 text-sm">
-          {account.canEdit
-            ? 'You are the owner: pick one option per meal for everyone, then tick who is eating in “Who’s eating”. Each member’s share of the bill follows their ticks.'
-            : 'This is your group’s order. Only the group’s owner can change it. Check you are ticked in “Who’s eating”, and ask them if not.'}
+          This is your group’s order. Only the group’s owner can change it. Check you are ticked in “Who’s eating”, and
+          ask them if not.
         </p>
       )}
       {day.startsOn && !items.length && (
