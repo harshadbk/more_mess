@@ -1,6 +1,5 @@
 import {
   Camera,
-  Code2,
   ExternalLink,
   Globe,
   MapPin,
@@ -160,26 +159,17 @@ export default function Footer() {
       </div>
 
       <div className="border-t border-white/10">
-        <div className="container-page flex flex-col gap-3 py-6 text-sm text-white/55 md:flex-row md:items-center md:justify-between">
+        {/* Extra room below on phones so the floating WhatsApp button never covers this text. */}
+        <div className="container-page flex flex-col gap-3 pt-6 pb-24 text-sm text-white/55 sm:pb-6 md:flex-row md:pr-24 md:items-center md:justify-between">
           <p>
             © {year} {businessConfig.name}. All rights reserved.
+            <span className="block text-xs text-white/40 sm:mt-0.5">
+              Website by <span className="text-white/60">Harshad Khatale</span>
+            </span>
           </p>
           <p className="max-w-xl md:text-right">
             Privacy: your details and orders are used only to run{" "}
             {businessConfig.name} and are never shared.
-          </p>
-        </div>
-      </div>
-
-      {/* Developer credit: its own line, with room below so the floating WhatsApp button never covers it. */}
-      <div className="border-t border-white/10 bg-black/15">
-        <div className="container-page flex justify-center pt-5 pb-24 sm:pb-6">
-          <p className="inline-flex flex-wrap items-center justify-center gap-x-3 gap-y-2 rounded-full border border-white/10 bg-white/5 px-5 py-2.5 text-sm text-white/70 shadow-[0_0_30px_-10px_rgb(245_158_66/0.5)]">
-            <Code2 className="size-4 text-saffron" aria-hidden="true" />
-            <span>Designed &amp; developed by</span>
-            <span className="bg-gradient-to-r from-saffron via-[#ffd27a] to-[#9be3b0] bg-clip-text font-display text-base font-extrabold tracking-wide text-transparent">
-              Harshad Khatale
-            </span>
           </p>
         </div>
       </div>
