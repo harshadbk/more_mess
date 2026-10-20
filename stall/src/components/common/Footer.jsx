@@ -93,6 +93,9 @@ export default function Footer() {
         <div className="container-x flex flex-col items-center justify-between gap-2 pb-28 pt-6 text-center text-sm text-ink/50 sm:flex-row sm:py-6 sm:text-left">
           <p>© {new Date().getFullYear()} {site.name}. All rights reserved.</p>
           <p>Made fresh with ❤️ — 100% Pure Veg</p>
+          <p>
+            Developed by <span className="font-semibold text-ink/70">Harshad Khatale</span>
+          </p>
         </div>
       </div>
     </footer>
