@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://shreesaisnacks.in/sitemap.xml

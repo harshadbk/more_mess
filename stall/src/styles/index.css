@@ -1,0 +1,134 @@
+@import "tailwindcss";
+
+@theme {
+  --color-cream: #fffdf8;
+  --color-card: #ffffff;
+  --color-brand: #ff6b00;
+  --color-brand-2: #ff8a00;
+  --color-peach: #ffe7cc;
+  --color-ink: #222222;
+  --color-mist: #f5f5f5;
+  --color-leaf: #2ecc71;
+  --color-cheese: #ffc93c;
+  --color-tomato: #ff4d3d;
+
+  --font-display: "Outfit", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+
+  --shadow-soft: 0 10px 40px -12px rgb(255 107 0 / 0.18), 0 2px 8px -2px rgb(34 34 34 / 0.06);
+  --shadow-lift: 0 30px 60px -20px rgb(255 107 0 / 0.35), 0 8px 20px -8px rgb(34 34 34 / 0.12);
+  --shadow-neu: 10px 10px 24px #efe6d8, -10px -10px 24px #ffffff;
+
+  --animate-float: float 6s ease-in-out infinite;
+  --animate-spin-slow: spin 40s linear infinite;
+  --animate-marquee: marquee 30s linear infinite;
+  --animate-shimmer: shimmer 2.6s ease-in-out infinite;
+  --animate-gradient: gradient 8s ease infinite;
+
+  @keyframes float {
+    0%, 100% { transform: translateY(0) }
+    50% { transform: translateY(-14px) }
+  }
+  @keyframes marquee {
+    from { transform: translateX(0) }
+    to { transform: translateX(-50%) }
+  }
+  @keyframes shimmer {
+    0% { transform: translateX(-120%) skewX(-20deg) }
+    60%, 100% { transform: translateX(220%) skewX(-20deg) }
+  }
+  @keyframes gradient {
+    0%, 100% { background-position: 0% 50% }
+    50% { background-position: 100% 50% }
+  }
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    @apply bg-cream font-sans text-ink antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  h1, h2, h3, h4 {
+    @apply font-display tracking-tight;
+  }
+  ::selection {
+    @apply bg-brand text-white;
+  }
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-brand rounded-md;
+  }
+  section[id] {
+    scroll-margin-top: 72px;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@layer components {
+  .container-x {
+    @apply mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8 2xl:max-w-[1440px];
+  }
+  .text-gradient {
+    @apply bg-gradient-to-r from-brand via-brand-2 to-cheese bg-clip-text text-transparent;
+    background-size: 200% auto;
+    animation: var(--animate-gradient);
+  }
+  .glass {
+    @apply border border-white/60 bg-white/60 backdrop-blur-xl;
+  }
+  .card {
+    @apply rounded-3xl bg-card shadow-soft;
+  }
+  .neu {
+    @apply rounded-3xl bg-cream;
+    box-shadow: var(--shadow-neu);
+  }
+  .eyebrow {
+    @apply inline-flex items-center gap-2 rounded-full bg-peach/70 px-4 py-1.5 text-xs font-bold uppercase tracking-[0.18em] text-brand;
+  }
+  .shimmer {
+    @apply relative overflow-hidden;
+  }
+  .shimmer::after {
+    content: "";
+    @apply pointer-events-none absolute inset-y-0 left-0 w-1/3 bg-gradient-to-r from-transparent via-white/45 to-transparent;
+    animation: var(--animate-shimmer);
+  }
+  .skeleton {
+    @apply relative overflow-hidden bg-peach/40;
+  }
+  .skeleton::after {
+    content: "";
+    @apply absolute inset-0 bg-gradient-to-r from-transparent via-white/70 to-transparent;
+    animation: var(--animate-shimmer);
+  }
+  .grain {
+    background-image: radial-gradient(rgb(255 107 0 / 0.08) 1px, transparent 1px);
+    background-size: 22px 22px;
+  }
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { scrollbar-width: none; }
+}
+
+/* Swiper pagination in brand colours */
+.reviews-swiper .swiper-pagination-bullet {
+  @apply h-2.5 w-2.5 bg-brand/30 opacity-100 transition-all;
+}
+.reviews-swiper .swiper-pagination-bullet-active {
+  @apply w-8 rounded-full bg-brand;
+}
+
+@keyframes ripple {
+  from { transform: scale(0); opacity: 0.6 }
+  to { transform: scale(1); opacity: 0 }
+}
