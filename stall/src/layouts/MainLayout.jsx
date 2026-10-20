@@ -6,6 +6,7 @@ import Footer from '../components/common/Footer'
 import MobileTabBar from '../components/common/MobileTabBar'
 import Navbar from '../components/common/Navbar'
 import OfferBanner from '../components/common/OfferBanner'
+import OrderBar from '../components/common/OrderBar'
 import ScrollProgress from '../components/common/ScrollProgress'
 
 export default function MainLayout() {
@@ -30,6 +31,7 @@ export default function MainLayout() {
       <Footer />
       <FloatingActions />
       <MobileTabBar />
+      <OrderBar />
     </>
   )
 }

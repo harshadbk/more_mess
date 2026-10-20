@@ -1,10 +1,10 @@
 import { motion } from 'framer-motion'
 import { ChefHat, Flame, Heart, Plus } from 'lucide-react'
+import { useCart } from '../../context/CartContext'
 import { useFavorites } from '../../context/FavoritesContext'
 import { useIsDesktop } from '../../hooks/useMediaQuery'
 import { categories } from '../../data/menu'
 import { cn } from '../../utils/cn'
-import { orderMessage, whatsappLink } from '../../utils/whatsapp'
 import Badge, { VegMark } from '../ui/Badge'
 import SmartImage from '../ui/SmartImage'
 
@@ -19,7 +19,7 @@ const motionProps = {
 }
 
 /** Mobile: compact food-app row (details left, photo + ADD right). */
-function MenuRow({ item, fav, toggle }) {
+function MenuRow({ item, fav, toggle, add }) {
   return (
     <motion.article {...motionProps} className="relative flex gap-4 rounded-[1.6rem] bg-white p-3.5 pb-5 shadow-soft active:scale-[0.99]">
       <div className="flex min-w-0 flex-1 flex-col">
@@ -55,15 +55,14 @@ function MenuRow({ item, fav, toggle }) {
 
       <div className="relative w-[124px] shrink-0">
         <SmartImage id={item.image} alt={item.name} width={260} sizes="124px" className="aspect-square rounded-2xl" />
-        <a
-          href={whatsappLink(orderMessage(item))}
-          target="_blank"
-          rel="noopener noreferrer"
-          aria-label={`Order ${item.name} on WhatsApp`}
+        <button
+          type="button"
+          onClick={() => add(item.id)}
+          aria-label={`Add ${item.name} to order`}
           className="absolute -bottom-3 left-1/2 flex h-9 w-[92px] -translate-x-1/2 items-center justify-center gap-0.5 rounded-xl border border-brand/20 bg-white text-sm font-extrabold tracking-wide text-brand shadow-[0_6px_16px_-4px_rgb(255_107_0/0.45)] active:scale-95"
         >
           ADD <Plus size={15} strokeWidth={3} />
-        </a>
+        </button>
       </div>
     </motion.article>
   )
@@ -71,10 +70,11 @@ function MenuRow({ item, fav, toggle }) {
 
 export default function MenuCard({ item }) {
   const { has, toggle } = useFavorites()
+  const { add } = useCart()
   const fav = has(item.id)
   const desktop = useIsDesktop()
 
-  if (!desktop) return <MenuRow item={item} fav={fav} toggle={toggle} />
+  if (!desktop) return <MenuRow item={item} fav={fav} toggle={toggle} add={add} />
 
   return (
     <motion.article
@@ -125,15 +125,14 @@ export default function MenuCard({ item }) {
             <span className="text-base text-brand">₹</span>
             {item.price}
           </p>
-          <a
-            href={whatsappLink(orderMessage(item))}
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label={`Order ${item.name} on WhatsApp`}
+          <button
+            type="button"
+            onClick={() => add(item.id)}
+            aria-label={`Add ${item.name} to order`}
             className="flex h-11 items-center gap-1.5 rounded-full bg-peach px-4 text-sm font-bold text-brand transition-all duration-300 hover:bg-gradient-to-r hover:from-brand hover:to-brand-2 hover:text-white hover:shadow-soft"
           >
             <Plus size={16} className="transition-transform duration-300 group-hover:rotate-90" /> Order
-          </a>
+          </button>
         </div>
       </div>
     </motion.article>

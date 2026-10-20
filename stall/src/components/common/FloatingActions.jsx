@@ -30,7 +30,7 @@ export default function FloatingActions() {
       <a href={callLink} className={`${fab} bg-ink text-white`} aria-label="Call us">
         <Phone size={20} />
       </a>
-      <a href={whatsappLink()} target="_blank" rel="noopener noreferrer" className={`${fab} relative h-14 w-14 bg-[#25D366] text-white`} aria-label="Order on WhatsApp">
+      <a href={whatsappLink()} target="_blank" rel="noopener noreferrer" className={`${fab} relative h-14 w-14 bg-[#25D366] text-white`} aria-label="Chat on WhatsApp">
         <span className="absolute inset-0 animate-ping rounded-full bg-[#25D366]/40" />
         <FaWhatsapp size={28} className="relative" />
       </a>

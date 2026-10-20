@@ -1,11 +1,10 @@
 import { motion } from 'framer-motion'
-import { BadgePercent, House, Phone, UtensilsCrossed } from 'lucide-react'
-import { FaWhatsapp } from 'react-icons/fa6'
-import { useLocation } from 'react-router-dom'
+import { BadgePercent, House, Phone, ShoppingBag, UtensilsCrossed } from 'lucide-react'
+import { Link, useLocation } from 'react-router-dom'
 import { useActiveSection } from '../../hooks/useActiveSection'
 import { useScrollTo } from '../../hooks/useScrollTo'
 import { cn } from '../../utils/cn'
-import { callLink, whatsappLink } from '../../utils/whatsapp'
+import { callLink } from '../../utils/whatsapp'
 
 const sectionIds = ['home', 'menu', 'special', 'why', 'offers', 'gallery', 'about', 'reviews', 'contact']
 // Which tab lights up for each section
@@ -43,19 +42,17 @@ export default function MobileTabBar() {
         <Tab active={active} id="home" icon={House} label="Home" onClick={() => scrollTo('home')} />
         <Tab active={active} id="menu" icon={UtensilsCrossed} label="Menu" onClick={() => scrollTo('menu')} />
         <div className="relative flex w-[76px] shrink-0 justify-center">
-          <a
-            href={whatsappLink()}
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="Order on WhatsApp"
+          <Link
+            to="/menu"
+            aria-label="Order from the menu"
             className="absolute -top-6 flex flex-col items-center gap-1 active:scale-95"
           >
             <span className="relative grid h-[60px] w-[60px] place-items-center rounded-full bg-gradient-to-br from-brand to-brand-2 text-white shadow-[0_10px_24px_-6px_rgb(255_107_0/0.8)] ring-[5px] ring-cream">
               <span className="absolute inset-0 animate-ping rounded-full bg-brand/30 [animation-duration:2.4s]" />
-              <FaWhatsapp size={28} className="relative" />
+              <ShoppingBag size={26} className="relative" />
             </span>
             <span className="text-[10.5px] font-extrabold text-brand">Order</span>
-          </a>
+          </Link>
         </div>
         <Tab active={active} id="offers" icon={BadgePercent} label="Offers" onClick={() => scrollTo('offers')} />
         <Tab active={active} id="call" icon={Phone} label="Call" href={callLink} />

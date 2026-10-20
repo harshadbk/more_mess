@@ -1,14 +1,13 @@
 import { motion, useMotionValue, useSpring, useTransform } from 'framer-motion'
 import gsap from 'gsap'
-import { ArrowRight, Star } from 'lucide-react'
+import { ArrowRight, ShoppingBag, Star } from 'lucide-react'
 import { useEffect, useRef } from 'react'
-import { FaWhatsapp } from 'react-icons/fa6'
+import { Link } from 'react-router-dom'
 import { word } from '../../animations/variants'
 import { photos } from '../../data/photos'
 import { site } from '../../data/site'
 import { useScrollTo } from '../../hooks/useScrollTo'
 import { imageUrl } from '../../utils/images'
-import { whatsappLink } from '../../utils/whatsapp'
 import Button from '../ui/Button'
 import { Bread, Cheese, CoffeeBean, Leaf, Lettuce, Onion, Tomato } from './Ingredients'
 
@@ -204,9 +203,9 @@ export default function Hero() {
               </Button>
             </motion.div>
             <motion.div initial={{ opacity: 0, x: -40 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 1.45, type: 'spring', stiffness: 120 }}>
-              <Button size="lg" variant="outline" className="w-full px-4 sm:w-auto sm:px-8" href={whatsappLink()} target="_blank" rel="noopener noreferrer">
-                <FaWhatsapp size={20} className="text-[#25D366]" /> <span className="sm:hidden">WhatsApp</span>
-                <span className="hidden sm:inline">Order on WhatsApp</span>
+              <Button as={Link} to="/menu" size="lg" variant="outline" className="w-full px-4 sm:w-auto sm:px-8">
+                <ShoppingBag size={20} className="text-brand" /> <span className="sm:hidden">Order</span>
+                <span className="hidden sm:inline">Order Now</span>
               </Button>
             </motion.div>
           </div>

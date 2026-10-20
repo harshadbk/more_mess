@@ -1,13 +1,14 @@
 import { AnimatePresence, motion } from 'framer-motion'
-import { ChevronDown, Heart, Mail, MessageCircle } from 'lucide-react'
+import { ChevronDown, Heart, Mail, MessageCircle, ShoppingBag } from 'lucide-react'
 import { useState } from 'react'
-import { FaInstagram, FaWhatsapp } from 'react-icons/fa6'
+import { Link, useLocation } from 'react-router-dom'
+import { FaInstagram } from 'react-icons/fa6'
 import { fadeUp, stagger } from '../../animations/variants'
 import { faqs, instagram } from '../../data/content'
 import { site } from '../../data/site'
 import { subscribeNewsletter } from '../../services/contactService'
 import { cn } from '../../utils/cn'
-import { callLink, whatsappLink } from '../../utils/whatsapp'
+import { callLink } from '../../utils/whatsapp'
 import Button from '../ui/Button'
 import SectionHeading from '../ui/SectionHeading'
 import SmartImage from '../ui/SmartImage'
@@ -126,6 +127,8 @@ export function Newsletter() {
 }
 
 export function OrderCta() {
+  const { pathname } = useLocation()
+
   return (
     <section aria-labelledby="cta-title" className="py-16">
       <div className="container-x">
@@ -147,10 +150,17 @@ export function OrderCta() {
           <h2 id="cta-title" className="mx-auto max-w-2xl text-4xl font-extrabold leading-tight sm:text-5xl lg:text-6xl">
             Your next favourite bite is <span className="text-gradient">one tap away.</span>
           </h2>
-          <p className="mx-auto mt-5 max-w-md text-white/70">Order on WhatsApp and pick it up hot and fresh. No waiting, no fuss.</p>
+          <p className="mx-auto mt-5 max-w-md text-white/70">Pick from the menu, send your order on WhatsApp and pick it up hot and fresh. No waiting, no fuss.</p>
           <div className="mt-9 flex flex-col justify-center gap-3 sm:flex-row">
-            <Button href={whatsappLink()} target="_blank" rel="noopener noreferrer" variant="whatsapp" size="lg">
-              <FaWhatsapp size={20} /> Order on WhatsApp
+            {/* Already on the menu page: take them back up to the dishes instead. */}
+            <Button
+              as={Link}
+              to="/menu"
+              onClick={() => pathname === '/menu' && window.scrollTo({ top: 0, behavior: 'smooth' })}
+              size="lg"
+              variant="whatsapp"
+            >
+              <ShoppingBag size={20} /> Order Now
             </Button>
             <Button href={callLink} size="lg">
               Call {site.phoneDisplay}

@@ -3,6 +3,7 @@ import { lazy, Suspense } from 'react'
 import { Route, Routes, useLocation } from 'react-router-dom'
 import Loader from './components/common/Loader'
 import ScrollManager from './components/common/ScrollManager'
+import { CartProvider } from './context/CartContext'
 import { FavoritesProvider } from './context/FavoritesContext'
 import MainLayout from './layouts/MainLayout'
 import Home from './pages/Home'
@@ -16,20 +17,22 @@ export default function App() {
   return (
     <MotionConfig reducedMotion="user">
       <FavoritesProvider>
-        <Loader />
-        <ScrollManager />
-        <Suspense fallback={<div className="min-h-screen" />}>
-          <AnimatePresence mode="wait">
-            <Routes location={location} key={location.pathname}>
-              <Route element={<MainLayout />}>
-                <Route index element={<Home />} />
-                <Route path="menu" element={<MenuPage />} />
-                <Route path="*" element={<NotFound />} />
-              </Route>
-              <Route path="admin" element={<Admin />} />
-            </Routes>
-          </AnimatePresence>
-        </Suspense>
+        <CartProvider>
+          <Loader />
+          <ScrollManager />
+          <Suspense fallback={<div className="min-h-screen" />}>
+            <AnimatePresence mode="wait">
+              <Routes location={location} key={location.pathname}>
+                <Route element={<MainLayout />}>
+                  <Route index element={<Home />} />
+                  <Route path="menu" element={<MenuPage />} />
+                  <Route path="*" element={<NotFound />} />
+                </Route>
+                <Route path="admin" element={<Admin />} />
+              </Routes>
+            </AnimatePresence>
+          </Suspense>
+        </CartProvider>
       </FavoritesProvider>
     </MotionConfig>
   )

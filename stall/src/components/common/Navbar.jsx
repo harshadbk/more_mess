@@ -1,8 +1,8 @@
 import { AnimatePresence, motion } from 'framer-motion'
-import { Menu, Phone, X } from 'lucide-react'
+import { Menu, Phone, ShoppingBag, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { FaWhatsapp } from 'react-icons/fa6'
-import { useLocation } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { navLinks, site } from '../../data/site'
 import { useActiveSection } from '../../hooks/useActiveSection'
 import { useScrolled } from '../../hooks/useScrolled'
@@ -78,7 +78,7 @@ export default function Navbar() {
               <FaWhatsapp size={22} />
             </a>
             <span className="hidden sm:block">
-              <Button href={whatsappLink()} target="_blank" rel="noopener noreferrer" size="sm">
+              <Button as={Link} to="/menu" size="sm">
                 Order Now
               </Button>
             </span>
@@ -131,8 +131,8 @@ export default function Navbar() {
               </motion.ul>
 
               <div className="mt-auto space-y-3 pt-8">
-                <Button href={whatsappLink()} target="_blank" rel="noopener noreferrer" variant="whatsapp" size="lg" className="w-full">
-                  <FaWhatsapp size={20} /> Order on WhatsApp
+                <Button as={Link} to="/menu" onClick={() => setOpen(false)} size="lg" className="w-full">
+                  <ShoppingBag size={20} /> Order Now
                 </Button>
                 <Button href={callLink} variant="outline" size="lg" className="w-full">
                   <Phone size={18} /> {site.phoneDisplay}

@@ -1,14 +1,16 @@
 import { motion } from 'framer-motion'
-import { ArrowUpRight } from 'lucide-react'
+import { Plus } from 'lucide-react'
 import { fadeUp, stagger } from '../../animations/variants'
+import { useCart } from '../../context/CartContext'
 import { specials } from '../../data/content'
 import { findItem } from '../../data/menu'
 import { cn } from '../../utils/cn'
-import { orderMessage, whatsappLink } from '../../utils/whatsapp'
 import SectionHeading from '../ui/SectionHeading'
 import SmartImage from '../ui/SmartImage'
 
 export default function Specials() {
+  const { add } = useCart()
+
   return (
     <section id="special" className="py-14 sm:py-24 lg:py-32">
       <div className="container-x">
@@ -19,14 +21,14 @@ export default function Specials() {
             const item = findItem(s.item)
             const big = i === 0
             return (
-              <motion.a
+              <motion.button
                 key={s.ribbon}
+                type="button"
                 variants={fadeUp}
-                href={whatsappLink(orderMessage(item))}
-                target="_blank"
-                rel="noopener noreferrer"
+                onClick={() => add(item.id)}
+                aria-label={`Add ${item.name} to order`}
                 className={cn(
-                  'group relative isolate flex min-h-[400px] w-[80vw] max-w-sm shrink-0 snap-center flex-col justify-end overflow-hidden rounded-[2rem] p-6 active:scale-[0.98] md:min-h-[320px] md:w-auto md:max-w-none text-white shadow-soft transition-shadow duration-500 hover:shadow-lift',
+                  'group relative isolate flex text-left min-h-[400px] w-[80vw] max-w-sm shrink-0 snap-center flex-col justify-end overflow-hidden rounded-[2rem] p-6 active:scale-[0.98] md:min-h-[320px] md:w-auto md:max-w-none text-white shadow-soft transition-shadow duration-500 hover:shadow-lift',
                   big && 'md:col-span-2 md:row-span-2 md:min-h-[560px] md:p-9',
                 )}
               >
@@ -48,11 +50,11 @@ export default function Specials() {
                 {big && <p className="mt-3 max-w-md text-white/75">{item.description}</p>}
                 <div className="mt-4 flex items-center justify-between">
                   <span className={cn('font-display font-extrabold', big ? 'text-4xl' : 'text-2xl')}>₹{item.price}</span>
-                  <span className="grid h-12 w-12 place-items-center rounded-full bg-white text-ink transition-all duration-500 group-hover:rotate-45 group-hover:bg-brand group-hover:text-white">
-                    <ArrowUpRight size={22} />
+                  <span className="grid h-12 w-12 place-items-center rounded-full bg-white text-ink transition-all duration-500 group-hover:rotate-90 group-hover:bg-brand group-hover:text-white">
+                    <Plus size={22} />
                   </span>
                 </div>
-              </motion.a>
+              </motion.button>
             )
           })}
         </motion.div>

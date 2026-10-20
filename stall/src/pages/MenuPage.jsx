@@ -17,7 +17,7 @@ export default function MenuPage() {
             <h1 className="mt-4 text-5xl font-extrabold leading-[1.02] sm:text-6xl lg:text-7xl">
               Pick your <span className="text-gradient">happiness.</span>
             </h1>
-            <p className="mt-5 text-lg text-ink/60">Search by name, category or price, then tap Order to send it straight to our WhatsApp.</p>
+            <p className="mt-5 text-lg text-ink/60">Search by name, category or price, then tap Order to add it and send your order on WhatsApp.</p>
           </div>
           <MenuExplorer />
         </div>
